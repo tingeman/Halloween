@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server/dashboard/app.py ./app.py
 COPY server/dashboard/mqtt_service.py ./mqtt_service.py
 COPY server/dashboard/plugin_loader.py ./plugin_loader.py
+COPY server/dashboard/jarvis ./jarvis
 COPY server/dashboard/plugin_base /opt/plugin_base
 
 # Not needed since we include it on the PYTHONPATH in docker-compose.override.yml

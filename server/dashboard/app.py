@@ -4,6 +4,7 @@ from dash import Dash, html, dcc
 import dash_bootstrap_components as dbc
 from mqtt_service import MQTTService
 from plugin_loader import discover_plugins
+from jarvis import create_app as create_jarvis_app
 import os
 import socket
 
@@ -50,6 +51,7 @@ def navbar():
         dbc.Container([
             html.Span("🎃 Halloween Dashboard", className="navbar-brand mb-0 h1"),
             html.Div(id="topbar-widgets", className="d-flex gap-2 ms-auto", children=topbar_items),
+            html.A("Jarvis view", href="/jarvis/", className="btn btn-sm btn-outline-info ms-3"),
         ]),
         color="dark", dark=True, className="mb-3"
     )
@@ -80,6 +82,9 @@ for p in PLUGINS:
         p["register"](app, SERVICES)
     except Exception as e:
         print(f"[plugin:{p['name']}] register_callbacks failed: {e}")
+
+# Jarvis-style dashboard at /jarvis/, alongside this one
+create_jarvis_app(server, mqtt)
 
 def _on_exit():
     mqtt.disconnect()

@@ -139,6 +139,27 @@ docker compose -f infra/compose/docker-compose.yml `
   -f infra/compose/docker-compose.dashboard.yml logs dashboard
 ```
 
+#### Jarvis view
+
+A second, HUD-style view of the same plugins runs at
+**<http://localhost:8050/jarvis/>**. Switch between the views with the
+**Jarvis view** button in the classic navbar and **Classic view** in the Jarvis
+header (or press `C`). Both views send the same MQTT commands.
+
+The Jarvis view has three layouts, switchable live with the header buttons or
+keys `1` `2` `3`; the choice is remembered per browser:
+
+- **Grid**: all prop panes as equal tiles on one screen.
+- **Focus**: one large pane, the others stacked compactly on the right
+  (telemetry hidden). Click `⤢` on a pane to focus it.
+- **Ops**: a command rail with systems online, per-prop status and a comms log
+  of commands sent from this view, plus the panes in a two-column board.
+
+Code: `server/dashboard/jarvis/` (app in `__init__.py`, look and layouts in
+`assets/jarvis.css`). Plugins need no changes; the view restyles their markup.
+Proposed behaviour changes are tracked in
+[docs/dashboard-roadmap.md](docs/dashboard-roadmap.md).
+
 ## 📁 Project Structure
 
 ```text

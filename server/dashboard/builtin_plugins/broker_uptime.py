@@ -1,4 +1,5 @@
 # server/dashboard/builtin_plugins/broker_uptime.py
+import json
 from dash import html, Input, Output
 
 name = "Broker Uptime"
@@ -30,7 +31,9 @@ def register_callbacks(app, services):
         val = cache.get("broker_uptime_raw", "—")
         # Try to format seconds as HH:MM:SS if possible
         try:
-            secs = int(val)
+            # Payload may be a bare number or JSON like {"uptime_s": 67}
+            parsed = json.loads(val)
+            secs = int(parsed["uptime_s"] if isinstance(parsed, dict) else parsed)
             h, r = divmod(secs, 3600)
             m, s = divmod(r, 60)
             val = f"{h:02d}:{m:02d}:{s:02d}"
