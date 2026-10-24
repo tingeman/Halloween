@@ -50,6 +50,8 @@ class Plugin(BasePlugin):
                 html.Label("Tesla:"),
                 html.Button("Open Trunk", id="thn-tesla-open-trunk", n_clicks=0),
                 html.Button("Close Trunk", id="thn-tesla-close-trunk", n_clicks=0),
+                html.Button("Resync Tesla", id="thn-tesla-resync", n_clicks=0,
+                            title="Re-read the real trunk state from the car (may lock the doors)"),
             ]),
 
             # Hue controls
@@ -97,6 +99,7 @@ class Plugin(BasePlugin):
         # Tesla
         self._register_button(app, "thn-tesla-open-trunk", {"action": "tesla", "args": "open_trunk"})
         self._register_button(app, "thn-tesla-close-trunk", {"action": "tesla", "args": "close_trunk"})
+        self._register_button(app, "thn-tesla-resync", {"action": "tesla", "args": "resync"})
 
         # Hue
         self._register_button(app, "thn-hue-disco", {"action": "hue", "args": "disco"})

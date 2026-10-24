@@ -56,65 +56,88 @@ EOF
 
 ### 2. Launch the System
 
+Run Compose commands from the repository root. On Windows PowerShell, use
+backticks for line continuation.
+
 #### Full Stack (All Services)
 
-```bash
-docker compose -f infra/compose/docker-compose.yml \
-               -f infra/compose/docker-compose.workers.yml \
-               -f infra/compose/docker-compose.dashboard.yml \
-               -f infra/compose/docker-compose.media.yml \
-               up --build
+```powershell
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.workers.yml `
+  -f infra/compose/docker-compose.dashboard.yml `
+  -f infra/compose/docker-compose.media.yml `
+  up --build
 ```
+
+To launch just the broker and dashboard, use:
+
+```powershell
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.dashboard.yml `
+  up --build
+```
+
+`docker-compose.dev.yml` is not required to run the dashboard; it only adds
+the `mqtt_test` integration-test service. Add it only when you intend to run
+that test service.
 
 When relaunching, it may be necessary to stop and remove all containers first, to trigger full rebuild:
 
-```bash
-docker compose -f infra/compose/docker-compose.yml \
-               -f infra/compose/docker-compose.workers.yml \
-               -f infra/compose/docker-compose.dashboard.yml \
-               -f infra/compose/docker-compose.media.yml \
-               stop
+```powershell
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.workers.yml `
+  -f infra/compose/docker-compose.dashboard.yml `
+  -f infra/compose/docker-compose.media.yml `
+  stop
 
-docker compose -f infra/compose/docker-compose.yml \
-               -f infra/compose/docker-compose.workers.yml \
-               -f infra/compose/docker-compose.dashboard.yml \
-               -f infra/compose/docker-compose.media.yml \
-               rm
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.workers.yml `
+  -f infra/compose/docker-compose.dashboard.yml `
+  -f infra/compose/docker-compose.media.yml `
+  rm
 
-docker compose -f infra/compose/docker-compose.yml \
-               -f infra/compose/docker-compose.workers.yml \
-               -f infra/compose/docker-compose.dashboard.yml \
-               -f infra/compose/docker-compose.media.yml \
-               up --build               
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.workers.yml `
+  -f infra/compose/docker-compose.dashboard.yml `
+  -f infra/compose/docker-compose.media.yml `
+  up --build
 ```
 
 #### Individual Services
 
 **MQTT Broker Only:**
 
-```bash
-docker compose -f docker-compose.yml up --build
+```powershell
+docker compose -f infra/compose/docker-compose.yml up --build
 ```
 
 **Dashboard Only:**
 
-```bash
-docker compose -f docker-compose.yml \
-               -f docker-compose.dashboard.yml \
-               up --build
+```powershell
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.dashboard.yml `
+  up --build
 ```
 
 **Workers Only:**
 
-```bash
-docker compose -f docker-compose.yml \
-               -f docker-compose.workers.yml \
-               up --build
+```powershell
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.workers.yml `
+  up --build
 ```
 
 ### 3. Access the Dashboard
 
-Open your browser to: **<http://localhost:8050>**
+Once the dashboard container is running, open **<http://localhost:8050>**.
+If it does not load, check the Compose service status and dashboard logs:
+
+```powershell
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.dashboard.yml ps
+docker compose -f infra/compose/docker-compose.yml `
+  -f infra/compose/docker-compose.dashboard.yml logs dashboard
+```
 
 ## 📁 Project Structure
 
@@ -411,6 +434,10 @@ mosquitto_sub -h localhost -v -t 'halloween/tesla_hue_nest/#'
 
 ## 🐛 Troubleshooting
 
+### Tesla Trunk State Out of Sync
+
+The worker caches the trunk state (no read-only query exists, and checking is slow). If the trunk is moved outside the worker, press **Resync Tesla** on the dashboard. This re-reads the real state through a `door_lock` command, so it may lock the doors. Handler errors appear in `docker logs halloween_worker_host` and on the MQTT topic `halloween/<prop>/status/error`.
+
 ### Dashboard Not Loading Plugins
 
 Check environment variables in `config/dashboard.env`:
@@ -503,7 +530,8 @@ MQTT_ADMIN_PW=your_password
 
 - **Dashboard Plugins**: `server/dashboard/README.md`
 - **Workers**: `server/worker_host/WORKERS.md`
-- **Architecture**: `halloween-2025-structure.md`
+- **Architecture** (2025 snapshot): `halloween-2025-structure.md`
+- **2026 field notes**: `halloween-2026-notes.md`
 - **Individual Props**: See `props/<prop_name>/topics.md`
 
 ## ❓ FAQ
@@ -616,7 +644,7 @@ The test results are displayed in the container logs.
 - [ ] Remote config editing from dashboard
 - [ ] Prop removal/relaunching from dashboard
 - [ ] Tesla state machine intensive testing and debugging
-- [ ] Persistent Hue bridge key storage
+- [x] Persistent Hue bridge key storage (`config/secrets/hue/`, see `halloween-2026-notes.md`)
 - [ ] Fire counter and Tesla open counter (persistent)
 - [ ] Mounted config volumes with reload capability
 

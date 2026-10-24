@@ -202,7 +202,8 @@ class TeslaCar:
                 self.trunk_open = True
                 print(f"{self.__class__.__name__}::Trunk opened")
             else:
-                print(f"{self.__class__.__name__}::Failed to open trunk")
+                print(f"{self.__class__.__name__}::Failed to open trunk, resyncing state")
+                self._safe_resync()
         else:
             print(f"{self.__class__.__name__}::Trunk is already open")
 
@@ -218,11 +219,24 @@ class TeslaCar:
         """
         self.wake_up()
         response = self.api.door_lock()
-        if response['result'] == False and 'CLOSURES_OPEN' in response['string']:
+        # The API reports the failure text in 'reason' (older responses used 'string')
+        reason = response.get('reason') or response.get('string') or ''
+        if response['result'] == False and 'CLOSURES_OPEN' in reason:
             self.trunk_open = True
         else:
             self.trunk_open = False
     
+    def resync_trunk_state(self):
+        """Refresh the cached trunk state from the car (note: this may lock the doors)."""
+        self.get_trunk_state()
+        print(f"{self.__class__.__name__}::Resynced trunk state: {'Open' if self.trunk_open else 'Closed'}")
+
+    def _safe_resync(self):
+        try:
+            self.resync_trunk_state()
+        except Exception as e:
+            print(f"{self.__class__.__name__}::Resync failed: {e}")
+
     # def confirm_trunk_open(self):
     #     if self.command('LOCK') == 'doors_open':
     #         # this is a workaround to check if trunk is open
@@ -249,7 +263,8 @@ class TeslaCar:
                 self.trunk_open = False
                 print(f"{self.__class__.__name__}::Trunk closed")
             else:
-                print(f"{self.__class__.__name__}::Failed to close trunk")    
+                print(f"{self.__class__.__name__}::Failed to close trunk, resyncing state")
+                self._safe_resync()
         else:
             print(f"{self.__class__.__name__}::Trunk is already closed")
 

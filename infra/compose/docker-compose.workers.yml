@@ -14,7 +14,9 @@
       - ../../config/worker_host.env
     environment:
       - PYTHONPATH=/app:/opt/libs/py:/opt/builtin_workers
+      - HUE_CONFIG_FILE=/hue/python_hue
     volumes:
+      - ../../config/secrets/hue:/hue
       - ../../props:/app/props:ro
       - ../../libs/py:/opt/libs/py:ro
     labels:

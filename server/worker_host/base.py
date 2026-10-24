@@ -66,6 +66,7 @@ class BaseWorker:
                 else:
                     await asyncio.to_thread(handler, arg)
             except Exception as e:
+                print(f"[{self.prop_id}] {handler_name} failed: {type(e).__name__}: {e}", flush=True)
                 self.publish_status("error", f"{type(e).__name__}: {e}")
         elif hasattr(self, "do_command"):
             handler = getattr(self, "do_command")
@@ -75,6 +76,7 @@ class BaseWorker:
                 else:
                     await asyncio.to_thread(handler, action, arg)
             except Exception as e:
+                print(f"[{self.prop_id}] do_command({action}) failed: {type(e).__name__}: {e}", flush=True)
                 self.publish_status("error", f"{type(e).__name__}: {e}")
         else:
             self.publish_status("warn", f"Unknown action: {action}")

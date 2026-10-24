@@ -1089,6 +1089,8 @@ class Worker(BaseWorker):
                     await asyncio.to_thread(self.tesla_car.open_trunk)
                 case 'close_trunk':
                     await asyncio.to_thread(self.tesla_car.close_trunk, trunk_check=True)
+                case 'resync':
+                    await asyncio.to_thread(self.tesla_car.resync_trunk_state)
                 case 'lock':
                     await asyncio.to_thread(self.tesla_car.lock)
                 case 'unlock':

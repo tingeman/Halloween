@@ -1,10 +1,16 @@
 
 import time
 import colorsys
-from phue2 import Bridge, PhueRegistrationException
+import os
+from phue import Bridge as _Bridge, PhueRegistrationException
 import threading
 import random
 import ipdb
+
+
+def Bridge(bridge_ip):
+    # HUE_CONFIG_FILE lets the registration key live on a persistent volume (default: ~/.python_hue)
+    return _Bridge(bridge_ip, config_file_path=os.environ.get('HUE_CONFIG_FILE'))
 
 hue_bridge_ip = '10.67.1.54'
 light_pattern = 'halloween'
