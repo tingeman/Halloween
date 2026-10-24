@@ -1,0 +1,25 @@
+# Configuration for the Dungeon Nest prop
+
+# --- BEHAVIOR ---
+PLAY_DURATION: 300        # seconds the soundscape loops after the last motion (retrigger resets this)
+AUTO_ARM: true            # start armed (reacting to motion) when the worker starts
+SENSOR_POLL_INTERVAL: 1   # seconds between motion sensor polls
+TELEMETRY_INTERVAL: 10    # seconds between telemetry updates
+
+# --- HUE SETTINGS (motion sensors only, same as thriller_hue_nest) ---
+HUE_BRIDGE_IP: "10.67.1.54"
+MOTION_SENSORS:
+  - "halloween"
+  - "Hue outdoor motion sensor 1"
+  - "Hue outdoor motion sensor 2"
+
+# --- CHROMECAST SETTINGS ---
+# Media server as seen from the speakers: IP of the PC running docker-compose.media.yml, port 8000.
+# Bare file names in `url` are resolved against this; full http(s):// URLs are used unchanged.
+MEDIA_BASE_URL: "http://10.67.1.115:8000"
+CHROMECAST_DUNGEON_GROUP:
+  - name: "dungeon"
+    IP: "10.67.1.253"
+    url: "Halloween2023 - dungeon soundscape.mp3"
+    volume: 0.9
+    repeat: false

@@ -11,6 +11,6 @@ def resolve_media_url(url: str, base_url: str) -> str:
         return url
     if not base_url:
         raise ValueError(
-            f"Media '{url}' is not a full URL and MEDIA_BASE_URL is not set (see config/site.env)"
+            f"Media '{url}' is not a full URL and MEDIA_BASE_URL is not set (set it in the prop's config.yml)"
         )
     return f"{base_url.rstrip('/')}/{quote(url.lstrip('/'), safe='/%')}"

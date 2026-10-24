@@ -452,7 +452,7 @@ class ChromecastGroup:
             elif cast.media_controller.status.player_state == 'UNKNOWN':
                 if state not in ['BUFFERING', 'PAUSED']:
                     state = 'UNKNOWN'   
-        
+        return state
 
     def queue_repeat_single(self):
         for cast in self.chromecasts: 

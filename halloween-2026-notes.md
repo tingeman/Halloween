@@ -118,4 +118,6 @@ snapshot of the 2025 launch and is not updated here.
 - [x] ESP32 coffin jumper Wi-Fi/MQTT and dashboard commands.
 - [ ] Test ESP32 safeguards under fault (watchdog, crash log).
 - [x] Persist the Hue bridge key across container recreation.
-- [ ] Test bbq_skeleton speaker; wire up the dungeon speaker.
+- [ ] Test bbq_skeleton speaker; test dungeon_nest (new prop, see props/dungeon_nest/README.md).
+  First start: Nest at 10.67.1.253 was not discovered (0 devices; port 8009 not
+  reachable from the PC; probably powered off/other IP). Check, then (Re)Connect.

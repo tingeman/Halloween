@@ -1,0 +1,6 @@
+pychromecast
+numpy
+ipdb
+phue2
+pydantic
+pydantic-settings
