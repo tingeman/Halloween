@@ -7,18 +7,20 @@ TELEMETRY_INTERVAL: 10     # how often to send telemetry updates (seconds)
 USE_TESLA: True
 
 # --- HUE SETTINGS ---
-# The HUE_BRIDGE_IP should be set in a central/secret config if shared
-# For now, we can place it here.
-HUE_BRIDGE_IP: "10.67.1.54" # <-- IMPORTANT: Set your bridge IP here
+HUE_BRIDGE_IP: "10.67.1.54"   # Hue bridge IP
 HUE_SPOT_LIGHT: "Halloween Tesla"
 HUE_PLAYING_SCENE: "purple"  # Options: 'disco' or color ('red', 'yellow', 'pink', 'purple', 'normal', 'normal_lstr', 'dimmed')
 MOTION_SENSORS:
   - "halloween"
 
 # --- CHROMECAST SETTINGS ---
+# Media server as seen from the speakers: IP of the PC running docker-compose.media.yml, port 8000.
+# Update when that PC's IP changes. Bare file names in `url` are resolved against this;
+# full http(s):// URLs are used unchanged.
+MEDIA_BASE_URL: "http://10.67.1.115:8000"
 CHROMECAST_TESLA_GROUP:
   - IP: "10.67.1.250"
-    url: "http://10.67.1.135:8000/The_skeleton_dance_Oscar_Pascasio.mp3"
+    url: "The_skeleton_dance_Oscar_Pascasio.mp3"   # resolved against MEDIA_BASE_URL
     volume: 0.9
     repeat: false
 

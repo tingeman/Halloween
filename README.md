@@ -434,6 +434,17 @@ mosquitto_sub -h localhost -v -t 'halloween/tesla_hue_nest/#'
 
 ## 🐛 Troubleshooting
 
+### Speakers Silent After an IP Change
+
+Speakers fetch audio from the media server (port 8000 on the host PC). If Play does nothing, the speaker status shows `idle_reason: ERROR` and the media server log (`docker logs halloween_media_server`) has no request from the speaker, the Windows firewall is probably blocking inbound port 8000 (Wi-Fi is often profiled "Public"). Allow it once, in an Administrator PowerShell:
+
+```powershell
+New-NetFirewallRule -DisplayName "Halloween media server" -Direction Inbound -Protocol TCP -LocalPort 8000 -RemoteAddress 10.67.1.0/24 -Action Allow -Profile Any
+```
+
+
+Media URLs are built from `MEDIA_BASE_URL` in the prop's `props/<prop>/backend/config.yml` (the media host's IP, port 8000). Update it in each prop that plays media, then `docker restart halloween_worker_host` (props are bind-mounted, so no rebuild is needed). See `halloween-2026-notes.md` for where each kind of setting lives.
+
 ### Tesla Trunk State Out of Sync
 
 The worker caches the trunk state (no read-only query exists, and checking is slow). If the trunk is moved outside the worker, press **Resync Tesla** on the dashboard. This re-reads the real state through a `door_lock` command, so it may lock the doors. Handler errors appear in `docker logs halloween_worker_host` and on the MQTT topic `halloween/<prop>/status/error`.
@@ -645,6 +656,7 @@ The test results are displayed in the container logs.
 - [ ] Prop removal/relaunching from dashboard
 - [ ] Tesla state machine intensive testing and debugging
 - [x] Persistent Hue bridge key storage (`config/secrets/hue/`, see `halloween-2026-notes.md`)
+- [ ] Per-prop documentation page (`props/<prop>/README.md`): purpose, hardware, config.yml settings (Hue IP, media URL, Chromecast IPs), secrets, MQTT topics, dashboard controls, troubleshooting
 - [ ] Fire counter and Tesla open counter (persistent)
 - [ ] Mounted config volumes with reload capability
 

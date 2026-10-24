@@ -33,6 +33,11 @@ snapshot of the 2025 launch and is not updated here.
 - Disconnecting the VPN restored access. Check with
   `Find-NetRoute -RemoteIPAddress <bridge-ip>`.
 
+### Settings: where things go
+- `props/<prop>/backend/config.yml`: everything prop-specific, including `HUE_BRIDGE_IP`, `HUE_SPOT_LIGHT`, `MOTION_SENSORS`, Chromecast IPs and `MEDIA_BASE_URL` (media host IP + port 8000). Media `url:` entries may be bare file names (resolved against that prop's `MEDIA_BASE_URL`, e.g. `url: "song.mp3"`); full `http(s)://` URLs are used unchanged. **When the media host's IP changes, update `MEDIA_BASE_URL` in each prop that plays media**, then `docker restart halloween_worker_host` (props are bind-mounted, no rebuild needed).
+- `config/secrets/*.env` (git-ignored): secrets (`tesla.env`, `mqtt_users.env`) and the Hue key (`config/secrets/hue/`).
+- `config/worker_host.env`: which props the worker host loads.
+
 ### Hue: bridge registration
 - First connection from a new container requires pressing the bridge's
   physical link button (error 101 `link button not pressed`) within about 30
@@ -68,6 +73,13 @@ snapshot of the 2025 launch and is not updated here.
   `docker exec halloween_mqtt sh -c 'mosquitto_sub -h localhost -u "$MQTT_ADMIN_USER" -P "$MQTT_ADMIN_PW" -v -t "halloween/tesla_hue_nest/status/#"'`
 
 ### Nest / Chromecast
+- Play silent but Volume/Connect work: the speaker could not fetch the audio
+  (`idle_reason: ERROR`, no request in `docker logs halloween_media_server`).
+  Cause in 2026: Windows firewall blocked inbound TCP 8000 (Wi-Fi profile
+  Public). Fixed with an inbound allow rule for 10.67.1.0/24 (command in the
+  README troubleshooting).
+- Pressing buttons while the speaker is still booting gives `NotConnected:
+  ... is connecting...`; press (Re)Connect once it is online.
 - With the speakers offline, discovery reports `Connected to 0 Chromecast
   devices`. Re-test once they are online.
 

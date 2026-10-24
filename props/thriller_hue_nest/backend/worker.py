@@ -5,10 +5,11 @@ import json
 import queue
 import time
 from abc import ABC, abstractmethod 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings
 from typing import List
 
+from halloween_common.media import resolve_media_url
 from worker_host.base import BaseWorker
 
 # Import third-party libraries
@@ -27,6 +28,8 @@ class ChromecastDevice(BaseModel):
     repeat: bool = False
 
 class ConfigModel(BaseSettings):
+    # Per-prop value, set in the prop's config.yml; bare media file names resolve against it
+    MEDIA_BASE_URL: str = ""
     HUE_BRIDGE_IP: str = Field(..., env="HUE_BRIDGE_IP")
     MOTION_SENSORS: List[str]
     CHROMECAST_THRILLER_GROUP: List[ChromecastDevice]
@@ -47,6 +50,12 @@ class ConfigModel(BaseSettings):
         # ignore extra keys from the raw YAML to be lenient
         "extra": "ignore",
     }
+
+    @model_validator(mode="after")
+    def _resolve_media_urls(self):
+        for dev in self.CHROMECAST_THRILLER_GROUP:
+            dev.url = resolve_media_url(dev.url, self.MEDIA_BASE_URL)
+        return self
 
 
 # ============================ STATE CLASSES ============================

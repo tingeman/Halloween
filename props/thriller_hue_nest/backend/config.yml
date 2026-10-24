@@ -6,9 +6,7 @@ WAIT_BETWEEN_PLAYS: 30     # 30 seconds between plays
 TELEMETRY_INTERVAL: 10     # how often to send telemetry updates (seconds)
 
 # --- HUE SETTINGS ---
-# The HUE_BRIDGE_IP should be set in a central/secret config if shared
-# For now, we can place it here.
-HUE_BRIDGE_IP: "10.67.1.54" # <-- IMPORTANT: Set your bridge IP here
+HUE_BRIDGE_IP: "10.67.1.54"   # Hue bridge IP
 HUE_SPOT_LIGHT: "Halloween Spot"
 HUE_PLAYING_SCENE: "disco"  # Options: 'disco' or color ('red', 'yellow', 'pink', 'purple', 'normal', 'normal_lstr', 'dimmed')
 MOTION_SENSORS:
@@ -17,16 +15,19 @@ MOTION_SENSORS:
   - "Hue outdoor motion sensor 2"
 
 # --- CHROMECAST SETTINGS ---
+# Media server as seen from the speakers: IP of the PC running docker-compose.media.yml, port 8000.
+# Bare file names in `url` are resolved against this; full http(s):// URLs are used unchanged.
+MEDIA_BASE_URL: "http://10.67.1.115:8000"
 CHROMECAST_THRILLER_GROUP:
   - name: "greeter"
     IP: "10.67.1.252"
-    url: "http://10.67.1.135:8000/Halloween%20soundtrack2023.mp3"
+    url: "Halloween soundtrack2023.mp3"
     volume: 0.9
     repeat: false
 
   - name: "bbq_skeleton"
     IP: "10.67.1.251"
-    url: "http://10.67.1.135:8000/Halloween%20soundtrack2023.mp3"
+    url: "Halloween soundtrack2023.mp3"
     volume: 0.9
     repeat: false
 
