@@ -17,7 +17,7 @@ robustness simple (try/except and short reconnect paths) rather than providing
 a full production-grade MQTT client.
 """
 
-import time, json
+import time, json, sys, os
 
 try:
     # MicroPython-specific modules
@@ -55,6 +55,13 @@ PIR_WARMUP_MS  = 5000    # Ignore PIR edges for this long after boot
 # Prop-level policy: how long to ignore any retriggers after starting an action
 ACTION_LOCKOUT_MS = 7000  # e.g. keep action lockout separate and possibly longer
 
+# ---- Safeguards ----
+WDT_TIMEOUT_MS = 60 * 1000       # hardware watchdog: reboot if the loop stalls this long
+ACTION_MAX_MS = 60 * 1000        # failsafe: force-stop an action (solenoid off) after this long
+MAX_CONSECUTIVE_ERRORS = 10      # reboot after this many loop errors in a row
+CRASH_LOG = "crash.log"          # on-device error log (kept small)
+CRASH_LOG_MAX_BYTES = 4096
+
 # OLED dimensions (set to 32 if your display is 128x32)
 OLED_W = 128
 OLED_H = 64
@@ -76,6 +83,7 @@ T_AVAIL = BASE + b"/availability"
 T_STATE = BASE + b"/state"
 T_TEL   = BASE + b"/telemetry"
 T_CMD   = BASE + b"/cmd"
+T_LOG   = BASE + b"/log"
 T_BROKER_UP = b"halloween/broker/uptime"
 
 # ---- Timezone (adjust when DST changes) ----
@@ -182,8 +190,10 @@ class CoffinProp:
         self.volume = 20
         self.broker_uptime_str = "—"
         self._last_action_start_ms = None
-
-        # Reconnection backoff state
+        self.wdt = None
+        self._consecutive_errors = 0
+        self._log_pending = None   # crash log text found at boot, published once MQTT is up
+        self.reset_cause = None
         self._next_wifi_reconnect_ms = 0
         self._wifi_reconnect_attempts = 0
         self._next_mqtt_reconnect_ms = 0
@@ -196,6 +206,80 @@ class CoffinProp:
         self.pir_latch = None
         self.solenoid_pin = None
         self.dfp = None
+
+    # ----------------------------
+    # Safeguards: logging, watchdog, failsafe
+    # ----------------------------
+    def _feed_wdt(self):
+        """Feed the hardware watchdog (no-op if it is not running)."""
+        if self.wdt:
+            try:
+                self.wdt.feed()
+            except Exception:
+                pass
+
+    def _solenoid_off(self):
+        """Force the solenoid off; safe to call at any time."""
+        try:
+            if self.solenoid_pin is not None:
+                self.solenoid_pin.value(0)
+        except Exception:
+            pass
+
+    def log_error(self, where: str, exc: Exception):
+        """Print the traceback, append it to crash.log, and publish it if MQTT is up."""
+        try:
+            print("ERROR in {}: {!r}".format(where, exc))
+            sys.print_exception(exc)
+        except Exception:
+            pass
+        text = "[up {}s] {}: {!r}".format(time.ticks_ms() // 1000, where, exc)
+        try:
+            try:
+                size = os.stat(CRASH_LOG)[6]
+            except OSError:
+                size = 0
+            mode = "w" if size > CRASH_LOG_MAX_BYTES else "a"   # start over rather than fill flash
+            with open(CRASH_LOG, mode) as f:
+                f.write(text + "\n")
+                sys.print_exception(exc, f)
+        except Exception as e:
+            print("Crash log write failed:", e)
+        self._publish(T_LOG, text)
+
+    def _load_boot_log(self):
+        """Note why we booted and keep the previous crash log to publish once online."""
+        try:
+            self.reset_cause = machine.reset_cause()
+            print("Reset cause:", self.reset_cause)
+        except Exception:
+            pass
+        try:
+            with open(CRASH_LOG) as f:
+                data = f.read()
+            if data:
+                self._log_pending = data[-1500:]
+                print("Previous crash log found:\n" + data)
+        except OSError:
+            pass
+
+    def _publish_boot_log(self):
+        """Publish the stored crash log (if any) after MQTT connects, then clear it."""
+        if self._log_pending and self.mqtt:
+            self._publish(T_LOG, "previous crash log: " + self._log_pending)
+            self._log_pending = None
+            try:
+                os.remove(CRASH_LOG)
+            except OSError:
+                pass
+
+    def _action_failsafe(self, now):
+        """Force-stop an action that has run longer than ACTION_MAX_MS."""
+        if (self.state == "action" and self._last_action_start_ms is not None
+                and time.ticks_diff(now, self._last_action_start_ms) > ACTION_MAX_MS):
+            print("ACTION: exceeded ACTION_MAX_MS, forcing stop")
+            self._publish(T_LOG, "action exceeded max duration, forced stop")
+            self._stop_action()
 
     # ----------------------------
     # Initialization
@@ -224,7 +308,8 @@ class CoffinProp:
                     self.wlan = None
                     return False
                 time.sleep(0.2)
-        
+                self._feed_wdt()
+
         print("Wi-Fi: connected", self.wlan.ifconfig())
         return True
 
@@ -324,6 +409,7 @@ class CoffinProp:
         """Mark this device as online and set the initial state."""
         if self.mqtt:
             self._publish(T_AVAIL, b"online", retain=True)
+            self._publish_boot_log()
             self.set_state("idle")
 
     def _start_action(self):
@@ -492,6 +578,8 @@ class CoffinProp:
             "blocked": self.is_blocked,
             "vol": self.volume,
             "rssi": None,
+            "reset_cause": self.reset_cause,
+            "loop_errors": self._consecutive_errors,
         }
         if self.pir_latch:
             tel["pir"] = "Motion!" if self.pir_latch.active() else "---"
@@ -701,7 +789,15 @@ class CoffinProp:
     def run(self):
         """Main entrypoint for the device firmware."""
         # 1. Initialize peripherals
+        self._load_boot_log()
         self._init_peripherals()
+
+        # Start the watchdog once the (slow, one-off) peripheral setup is done
+        try:
+            self.wdt = machine.WDT(timeout=WDT_TIMEOUT_MS)
+            print("Watchdog: started ({} s)".format(WDT_TIMEOUT_MS // 1000))
+        except Exception as e:
+            print("Watchdog: not available:", e)
 
         # 2. Splash screen
         if self.oled:
@@ -724,11 +820,25 @@ class CoffinProp:
         self._init_mqtt()
         self.set_state("armed" if not self.is_blocked else "blocked")
 
-        # 5. Main loop
-        last_tel = 0
+        # 5. Main loop, guarded: one bad iteration is logged, not fatal
+        self._last_tel = 0
         while True:
-            now = time.ticks_ms()
+            try:
+                self._step(time.ticks_ms())
+                self._consecutive_errors = 0
+            except Exception as e:
+                self._consecutive_errors += 1
+                self._solenoid_off()
+                self.log_error("main loop", e)
+                if self._consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    raise   # main() logs and reboots
+                time.sleep(0.5)
+            self._feed_wdt()
+            time.sleep(0.1)
 
+    def _step(self, now):
+        """One iteration of the main loop."""
+        if True:
             # --- Handle Wi-Fi and MQTT Connections with Backoff ---
             # 1. Check Wi-Fi status
             if not self.wlan or not self.wlan.isconnected():
@@ -774,6 +884,8 @@ class CoffinProp:
                     self._next_mqtt_reconnect_ms = now # Schedule immediate reconnect attempt
 
             # --- Core Prop Logic ---
+            self._action_failsafe(now)
+
             # Check and process current action status
             self._check_action_status()
 
@@ -781,22 +893,27 @@ class CoffinProp:
             self._process_triggers(now)
 
             # Periodic telemetry
-            if self.mqtt and time.ticks_diff(now, last_tel) > TELEMETRY_INTERVAL_MS:
+            if self.mqtt and time.ticks_diff(now, self._last_tel) > TELEMETRY_INTERVAL_MS:
                 self._telemetry()
-                last_tel = now
+                self._last_tel = now
                 print ("Telemetry sent.")
 
             self.render_display()
-            time.sleep(0.1)
 
 # ----------------------------
 # Entrypoint
 # ----------------------------
 def main():
-    """Instantiates and runs the prop."""
+    """Instantiates and runs the prop; on an unrecoverable error, log and reboot."""
     debug = secrets.DEBUG if hasattr(secrets, "DEBUG") else False
     prop = CoffinProp(debug=debug)
-    prop.run()
+    try:
+        prop.run()
+    except Exception as e:   # KeyboardInterrupt (Ctrl-C from mpremote) is not caught on purpose
+        prop._solenoid_off()
+        prop.log_error("fatal", e)
+        time.sleep(2)
+        machine.reset()
 
 # Entry
 if __name__ == "__main__":

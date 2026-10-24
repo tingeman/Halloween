@@ -83,10 +83,39 @@ snapshot of the 2025 launch and is not updated here.
 - With the speakers offline, discovery reports `Connected to 0 Chromecast
   devices`. Re-test once they are online.
 
+### ESP32 coffin jumper
+- No backend worker: `WORKER_PROPS_ALLOW` is irrelevant; the dashboard only
+  shows MQTT state and publishes commands. Base topic
+  `halloween/esp32-coffin-jumper-01`.
+- Board is a CH340 (`1a86:7523`), COM8. `mpremote` from conda env
+  `halloween2026`.
+- `secrets.py` (git-ignored) must hold the 2026 Wi-Fi and `MQTT_HOST` (the PC's
+  IP, currently 10.67.1.115). Windows firewall needs an inbound allow rule for
+  TCP 1883 (broker), otherwise Wi-Fi connects but MQTT does not.
+- `mpremote` interrupts the running program and does not restart it; the board
+  then shows offline until `mpremote connect COM8 reset` or a power cycle. Do
+  not leave a REPL open (it also blocks COM8 for other tools). Exit with
+  Ctrl-] .
+- Deploy one file: `mpremote connect COM8 fs cp main.py :` then `reset`.
+- Verified from dashboard: trigger, play_music, stop_music, stop_action, reset.
+- Safeguards added (see firmware README): 60 s hardware watchdog, guarded main
+  loop (solenoid forced off on errors), 60 s action failsafe, `crash.log`
+  published to `<base>/log` after reboot, auto `machine.reset()` on fatal
+  errors. Telemetry has `reset_cause` and `loop_errors`. Deployed and online;
+  fault behaviour not yet tested.
+
+### Nest speakers in config
+- Speakers used: tesla (10.67.1.250), thriller greeter (10.67.1.252),
+  bbq_skeleton (10.67.1.251, offline when tested).
+- "dungeon" speaker (10.67.1.253) only appears as an unused constant in the
+  `chromecast_API.py` test block of both props; no prop or config uses it.
+  Planned use: dungeon soundscape (roadmap).
+
 ## Open items for 2026
 - [ ] Re-test Nest speaker discovery with speakers online.
 - [ ] Test the dashboard Hue buttons.
 - [x] Resync the cached trunk state (dashboard "Resync Tesla" button).
-- [ ] Test the ESP32 coffin jumper (Wi-Fi/MQTT).
-- [ ] Persist the Hue bridge key across container recreation.
-- [ ] Test the ESP32 coffin jumper Wi-Fi/MQTT connection.
+- [x] ESP32 coffin jumper Wi-Fi/MQTT and dashboard commands.
+- [ ] Test ESP32 safeguards under fault (watchdog, crash log).
+- [x] Persist the Hue bridge key across container recreation.
+- [ ] Test bbq_skeleton speaker; wire up the dungeon speaker.
