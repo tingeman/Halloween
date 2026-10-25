@@ -10,7 +10,7 @@ Thomas on 2026-10-25 and are implemented; open points are at the bottom.
 | 1 | Tesla, Coffin Jumper | **Open Trunk**, **Close Trunk**, **Resync Tesla** and **Trigger** ask "Confirm?" and only send on a second click within 3 s (`confirm=True` on any button). |
 | 2 | All props | **All stop** in the top bar of both views (double click). Sends each plugin's `STOP_COMMANDS` (`stop` by default; Coffin: `stop_action` + `stop_music`). Tesla's stop is its normal Stop, which also closes the trunk. |
 | 3 | Nest props | **Log status** now sends `{"action": "chromecast", "args": "status"}`; Dungeon, Tesla and Thriller workers publish one `speakers/<name>` telemetry line per speaker (state, volume, cap). |
-| 4 | Tesla, Thriller | The always-disabled **Pause** was removed. A real pause needs a design decision (see open points). |
+| 4 | Tesla, Thriller | **Pause** works (decided 2026-10-25: freeze the music, leave the trunk open). New `PausedState`: pauses the speakers, freezes the motion timeout, ignores motion, leaves trunk and lights alone. **Play** resumes the same show where it was (no new trunk or Hue commands, no new play count); **Stop** and fade work as usual. |
 | 5 | Coffin Jumper | Explicit **Block** and **Unblock** buttons replace the cached-state toggle. |
 | 6 | All Nest props + Coffin | Volume number box + Set Vol replaced by a slider that sends on release (Nest 0-1, Coffin 0-30). Vol −/+ kept beside it. |
 | 7 | Dashboard | A prop that says online but sends nothing live (retained messages do not count) for `PROP_STALE_AFTER` s (60) shows **stale** (amber) in both views. |
@@ -60,6 +60,5 @@ accents and every Jarvis layout then work without further code.
 
 | Item | Question |
 |------|----------|
-| Pause for Tesla/Thriller | What should pause mean mid-show: freeze the music only, or also hold the trunk/lights and the motion timeout? Resume would re-run parts of the playing state today. |
 | Volume slider position | Sliders start at 0.5 (Nest) / 20 (Coffin); they do not read the speaker's current volume. Could follow telemetry if workers publish volume. |
 | Coffin "fires" line | The old "fires: —" line was removed: the firmware publishes `triggers`, which is in the telemetry table. |

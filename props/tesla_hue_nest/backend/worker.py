@@ -371,6 +371,8 @@ class PlayingState(State):
         finishes playing, it transitions to the FadeOutState.
         """
         current_time = time.monotonic()
+        if current_time < getattr(self, 'resume_grace_until', 0):
+            return  # just resumed from pause; give the speakers time to report PLAYING
 
         if len(context.motion_sensors) > 0:
             if current_time - self.last_motion_time > self.timeout_interval:
@@ -395,6 +397,8 @@ class PlayingState(State):
         match action:
             case 'stop':
                 context.set_state(StoppedState)
+            case 'pause':
+                context.set_state(PausedState)
             case 'fade':
                 context.set_state(FadeOutState)
             case 'disco':
@@ -411,6 +415,64 @@ class PlayingState(State):
     def on_motion(self, context):
         """Resets the inactivity timer upon motion detection."""
         self.last_motion_time = time.monotonic()
+
+
+class PausedState(State):
+    """
+    Freezes the show: the music is paused and the motion timeout stops
+    counting, while the lights and the trunk are left as they are.
+
+    play resumes the same show where it was, without re-running its start
+    (no new trunk or Hue commands, no new play count, no cooldown check).
+    Motion is ignored while paused.
+    """
+    def __init__(self, context):
+        print("Pausing...")
+        current = context.current_state
+        self.resume_to = current if isinstance(current, PlayingState) else None
+        self.paused_at = time.monotonic()
+
+    def on_enter(self, context):
+        if not context.cc_tesla_group.is_empty():
+            try:
+                context.cc_tesla_group.pause()
+            except Exception as e:
+                print(f"Failed to pause media: {e}")
+
+    def handle(self, context):
+        pass
+
+    def on_action(self, context, action, arg):
+        print(f"{self.__class__.__name__}::action passed: {action}, arg: {arg}")
+        match action:
+            case 'play' | 'resume':
+                self._resume(context)
+            case 'stop':
+                context.set_state(StoppedState)
+            case 'fade':
+                context.set_state(FadeOutState)
+            case 'disco':
+                context.hue_manager.toggle_disco()
+            case 'volume_up':
+                if not context.cc_tesla_group.is_empty():
+                    context.cc_tesla_group.volume_up()
+            case 'volume_down':
+                if not context.cc_tesla_group.is_empty():
+                    context.cc_tesla_group.volume_down()
+
+    def _resume(self, context):
+        if self.resume_to is None:
+            context.set_state(PlayingState)
+            return
+        paused_for = time.monotonic() - self.paused_at
+        self.resume_to.last_motion_time += paused_for   # the timeout did not run while paused
+        self.resume_to.resume_grace_until = time.monotonic() + 5
+        if not context.cc_tesla_group.is_empty():
+            try:
+                context.cc_tesla_group.play()
+            except Exception as e:
+                print(f"Failed to resume media: {e}")
+        context.restore_state(self.resume_to)
 
 
 class FadeOutState(State):
@@ -693,6 +755,12 @@ class Worker(BaseWorker):
         self._state_needs_enter = True
 
         self.publish_state(state_name)
+
+    def restore_state(self, state_obj):
+        """Return to an existing state instance without on_enter (resume after pause)."""
+        self.current_state = state_obj
+        self._state_needs_enter = False
+        self.publish_state(state_obj.__class__.__name__.replace("State", "").lower())
 
 
     # --- NEW: Async Command Bridge ---

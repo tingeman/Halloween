@@ -18,9 +18,8 @@ class Plugin(PropPlugin):
 
     def controls(self):
         tesla = lambda args: {"action": "tesla", "args": args}  # noqa: E731
-        # No Pause: the worker has no paused state (see docs/dashboard-roadmap.md)
         return [
-            self.state_buttons(),
+            self.state_buttons(pause=True),   # pause freezes the music; trunk and lights stay
             # These move the car, so they ask for a second click
             self.row("Tesla",
                      self.button("Open Trunk", self.cid("tesla-open-trunk"), tesla("open_trunk"), confirm=True),

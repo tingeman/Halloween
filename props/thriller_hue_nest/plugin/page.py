@@ -17,9 +17,8 @@ class Plugin(PropPlugin):
     ACCENT = "#c38bff"
 
     def controls(self):
-        # No Pause: the worker has no paused state (see docs/dashboard-roadmap.md)
         return [
-            self.state_buttons(),
+            self.state_buttons(pause=True),   # pause freezes the music; trunk and lights stay
             *self.hue_controls(),
             *self.nest_controls(),
         ]
