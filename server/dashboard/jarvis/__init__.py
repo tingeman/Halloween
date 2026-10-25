@@ -217,8 +217,13 @@ def create_app(server, mqtt, classic_url="/classic/"):
 
     # Status bar under the top bar, only in layouts without the systems rail
     # (grid, kiosk): brand and one status chip per system.
+    # Grid / Kiosk: the rail's brand + online gauge as a corner box next to the
+    # top bar and the status bar
+    brandbox = html.Div(className="jv-brandbox jv-rail-brand", children=[
+        _reactor(html.Div(id="jv-reactor-count-2", className="jv-core-label", children="0/0"), "gauge"),
+        html.Div([_brand(), html.Div("systems online", className="jv-rail-caption")]),
+    ])
     statusbar = html.Div(className="jv-statusbar", children=[
-        html.Div(className="jv-brand", children=[_reactor(), _brand()]),
         html.Div(id="jv-systems", className="jv-systems"),
     ])
 
@@ -291,6 +296,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             rail,
             header,
             statusbar,
+            brandbox,
             settings_panel,
             html.Main(className="jv-main", children=[
                 html.Div(className="jv-panes", children=panes or [
@@ -375,6 +381,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
         Output({"type": "jv-row-body", "index": ALL}, "className"),
         Output("jv-rail-systems", "children"),
         Output("jv-reactor-count", "children"),
+        Output("jv-reactor-count-2", "children"),
         Output("jv-log", "children"),
         Output("jv-ticker", "children"),
         Input("global-tick", "n_intervals"),
@@ -442,7 +449,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Span(className=f"jv-tick {kind}", children=f"{_fmt_ts(ts)} {_label(prop)} › {text}")
             for ts, kind, prop, text in entries[:6]
         ] or [html.Span("Standing by.", className="jv-tick")]
-        return chips, row_children, row_classes, rows, f"{online}/{len(items)}", log_rows, ticker
+        count = f"{online}/{len(items)}"
+        return chips, row_children, row_classes, rows, count, count, log_rows, ticker
 
     print(f"[jarvis] Jarvis dashboard mounted at {URL_BASE} with {len(cards)} pane(s); "
           f"default layout {defaults['layout']}, soundtrack {'on' if soundtrack else 'off'}")

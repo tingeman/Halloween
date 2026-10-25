@@ -719,3 +719,24 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 /* Same top bar height in every layout (the rail would otherwise stretch it) */
 .jv-header { align-self: start; box-sizing: border-box; height: 42px; flex-wrap: nowrap; }
 @media (max-width: 900px) { .jv-header { height: auto; flex-wrap: wrap; } }
+
+/* Grid / Kiosk: brand + online gauge in the top-left corner, spanning the
+   top bar and the status bar (where the rail starts in the other layouts) */
+.jv-brandbox {
+  grid-area: brand; display: none; align-items: center; gap: 12px;
+  padding: 4px 12px; border: 1px solid var(--jv-line); background: var(--jv-panel);
+  border-bottom: 1px solid var(--jv-line);
+}
+.jv-brandbox .jv-reactor.gauge { width: 70px; height: 70px; }
+.jv-layout-grid, .jv-layout-kiosk {
+  grid-template-columns: 290px minmax(0, 1fr);
+  grid-template-areas: "brand top" "brand status" "main main" "foot foot";
+}
+.jv-layout-grid .jv-brandbox, .jv-layout-kiosk .jv-brandbox { display: flex; }
+.jv-statusbar { align-self: stretch; }
+@media (max-width: 900px) {
+  .jv-layout-grid, .jv-layout-kiosk {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "brand" "status" "main" "foot";
+  }
+}
