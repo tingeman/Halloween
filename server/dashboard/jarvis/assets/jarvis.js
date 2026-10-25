@@ -107,8 +107,10 @@
         return [root, paneClasses].concat(layoutButtons, toggles);
       },
 
-      toggleSettings: function (_, cls) {
-        return (cls || "").indexOf("open") >= 0 ? "jv-settings-panel" : "jv-settings-panel open";
+      toggleSettings: function (_, __, cls) {
+        const open = (cls || "").indexOf("open") >= 0;
+        if (triggeredId() === "jv-settings-close" || open) return "jv-settings-panel";
+        return "jv-settings-panel open";
       },
 
       clock: function () {
@@ -117,7 +119,25 @@
     },
   });
 
+  // Close the settings panel with Esc or a click outside it
+  function settingsOpen() {
+    const p = document.getElementById("jv-settings-panel");
+    return p && p.classList.contains("open") ? p : null;
+  }
+  function closeSettings() {
+    const b = document.getElementById("jv-settings-close");
+    if (b) b.click();
+  }
+  document.addEventListener("pointerdown", function (ev) {
+    const p = settingsOpen();
+    if (!p || p.contains(ev.target)) return;
+    const gear = document.getElementById("jv-settings-btn");
+    if (gear && gear.contains(ev.target)) return;   // the gear toggles it itself
+    closeSettings();
+  }, true);
+
   document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && settingsOpen()) { closeSettings(); return; }
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const tag = (ev.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || ev.target.isContentEditable) return;

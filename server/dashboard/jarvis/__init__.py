@@ -188,7 +188,11 @@ def create_app(server, mqtt, classic_url="/classic/"):
         html.Button("⚙", id="jv-settings-btn", n_clicks=0, className="jv-settings-btn", title="Settings"),
     ])
     settings_panel = html.Div(id="jv-settings-panel", className="jv-settings-panel", children=[
-            html.Div("Settings", className="jv-rail-head"),
+            html.Div(className="jv-settings-head", children=[
+                html.Div("Settings", className="jv-rail-head"),
+                html.Button("✕", id="jv-settings-close", n_clicks=0, className="jv-settings-close",
+                            title="Close (Esc)"),
+            ]),
             html.Button("Prop accent colours", id="jv-set-accents", n_clicks=0, className="jv-toggle"),
             html.Button("Soundtrack", id="jv-set-sound", n_clicks=0, className="jv-toggle",
                         disabled=not soundtrack,
@@ -306,6 +310,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
         ClientsideFunction("jarvis", "toggleSettings"),
         Output("jv-settings-panel", "className"),
         Input("jv-settings-btn", "n_clicks"),
+        Input("jv-settings-close", "n_clicks"),   # also clicked by Esc / outside click (jarvis.js)
         State("jv-settings-panel", "className"),
         prevent_initial_call=True,
     )

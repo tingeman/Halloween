@@ -508,3 +508,10 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   background: var(--jv-panel-solid) !important; color: var(--jv-cyan-soft) !important;
   border: 1px solid var(--jv-line-strong) !important; font-family: var(--jv-font-mono); font-size: .7rem;
 }
+.jv-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.jv-settings-head .jv-rail-head { flex: 1; margin-top: 0; }
+.jv-settings-close {
+  background: transparent; border: 1px solid var(--jv-line); color: var(--jv-dim);
+  width: 26px; height: 24px; line-height: 1; cursor: pointer; font-size: .8rem;
+}
+.jv-settings-close:hover { color: var(--jv-bad); border-color: var(--jv-bad); }
