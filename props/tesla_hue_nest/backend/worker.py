@@ -766,11 +766,13 @@ class Worker(BaseWorker):
             self.cc_tesla_group = ChromecastGroup(
                 host_list=filter_ip_list(self.config.CHROMECAST_TESLA_GROUP),
                 volumes=filter_volume_list(self.config.CHROMECAST_TESLA_GROUP),
+                volume_limit_scale=self.volume_scale,
             )
             self.telemetry("speakers/Status", f"Connected to {len(self.cc_tesla_group.chromecasts)} Chromecast devices.")
             print(f"Connected to {len(self.cc_tesla_group.chromecasts)} Chromecast devices.")
             print(f"Chromecast group: {self.cc_tesla_group}")
             self.telemetry("speakers/SpeakersCount", len(self.cc_tesla_group.chromecasts), retain=True)
+            self.apply_volume_limit()
         except Exception as e:
             print(f"[tesla_hue_nest] Chromecast init failed: {e}. Continuing without sound system.")
             self.telemetry("speakers/Status", f"Chromecast initialization failed: {e}")
@@ -1156,6 +1158,9 @@ class Worker(BaseWorker):
 
         self.telemetry("hue/state", "Disco" if self.hue_manager.lights.disco_on else "Off", retain=True)
 
+    def volume_targets(self) -> list:
+        return [self.cc_tesla_group]
+
     async def do_chromecast(self, arg: str | dict | None):
         """
         Handles the 'chromecast' command to perform Chromecast actions.
@@ -1234,6 +1239,9 @@ class Worker(BaseWorker):
                 case 'connect':
                     # call the _connect_chromecast method to reconnect
                     await asyncio.to_thread(self._connect_chromecast)
+                case 'status':
+                    for key, line in self.cc_tesla_group.describe().items():
+                        self.telemetry(f"speakers/{key}", line)
                 case _:
                     print(f"Unknown Chromecast action: {action}")
         elif isinstance(arg, dict):

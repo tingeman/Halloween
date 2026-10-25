@@ -97,10 +97,12 @@ class Worker(BaseWorker):
                 self.group = ChromecastGroup(
                     host_list=[d.IP for d in devs],
                     volumes=[d.volume for d in devs],
+                    volume_limit_scale=self.volume_scale,
                 )
                 n = len(self.group.chromecasts)
                 self.telemetry("speakers/Status", f"Connected to {n} Chromecast devices.")
                 self.telemetry("speakers/SpeakersCount", n, retain=True)
+                self.apply_volume_limit()
             except Exception as e:
                 print(f"[{PROP_ID}] Chromecast init failed: {e}")
                 self.telemetry("speakers/Status", f"Chromecast initialization failed: {e}")
@@ -121,6 +123,13 @@ class Worker(BaseWorker):
 
     def _have_speakers(self) -> bool:
         return self.group is not None and not self.group.is_empty()
+
+    def volume_targets(self) -> list:
+        return [self.group]
+
+    def apply_volume_limit(self) -> None:
+        with self._lock:  # serialise with the poll thread's speaker access
+            super().apply_volume_limit()
 
     # ----------------------------- sound control -------------------------
     def _load_and_play(self) -> None:
@@ -310,6 +319,9 @@ class Worker(BaseWorker):
             elif action in ("volume_up", "volume_down") and self._have_speakers():
                 fn = self.group.volume_up if action == "volume_up" else self.group.volume_down
                 await asyncio.to_thread(fn)
+            elif action == "status" and self._have_speakers():
+                for key, line in self.group.describe().items():
+                    self.telemetry(f"speakers/{key}", line)
             else:
                 print(f"[{PROP_ID}] Unknown or unavailable chromecast action: {action}")
         elif isinstance(arg, dict) and "volume" in arg:

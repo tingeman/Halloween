@@ -119,6 +119,11 @@ async def run():
             parts = msg.topic.split("/", 3)
             if len(parts) >= 3 and parts[0] == "halloween":
                 prop_id = parts[1]
+                if prop_id == "broadcast":
+                    # Broadcasts (e.g. the global volume limit) go to every worker
+                    for w in list(instances.values()):
+                        await w.on_message(msg)
+                    continue
                 w = instances.get(prop_id)
                 if w:
                     await w.on_message(msg)
