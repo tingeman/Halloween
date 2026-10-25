@@ -679,3 +679,7 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 @media (max-width: 900px) { .jv-layout-focus .jv-panes { grid-template-columns: minmax(0, 1fr); } }
 .jv-toggle.theme::after { content: "BLUE"; color: var(--jv-cyan); }
 .jv-toggle.theme.flame::after { content: "FLAME"; color: #ff7a1a; }
+/* Clock: fixed-width cells so the time (and the bar around it) never shifts */
+.jv-clock { flex: none; display: inline-flex; justify-content: flex-end; min-width: 0; font-variant-numeric: tabular-nums; }
+.jv-clock-digit { display: inline-block; width: .82em; text-align: center; }
+.jv-clock-sep { display: inline-block; width: .42em; text-align: center; }

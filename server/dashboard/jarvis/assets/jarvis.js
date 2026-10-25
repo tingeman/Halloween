@@ -123,7 +123,12 @@
       },
 
       clock: function () {
-        return new Date().toLocaleTimeString("en-GB");
+        // One fixed-width cell per character: Orbitron digits differ in width,
+        // so a plain string makes the clock (and the whole bar) jitter.
+        return new Date().toLocaleTimeString("en-GB").split("").map(function (ch) {
+          return { type: "Span", namespace: "dash_html_components",
+                   props: { children: ch, className: ch === ":" ? "jv-clock-sep" : "jv-clock-digit" } };
+        });
       },
     },
   });
