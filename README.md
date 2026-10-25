@@ -162,7 +162,8 @@ Jarvis layouts, switchable live with the header buttons or keys `1`-`5`
   of every command on the bus, plus the panes in a two-column board.
 - **Kiosk**: status only, no buttons, large type, for a wall screen.
 
-The ⚙ menu toggles per-prop accent colours and the soundtrack (`M`). Settings
+The ⚙ menu toggles per-prop accent colours and the soundtrack (`M`); the ♫ button
+(or `R`) restarts the track, which otherwise plays once per page load. Settings
 are in `config/dashboard.env` (`JARVIS_DEFAULT_LAYOUT`, `JARVIS_ACCENTS`,
 `JARVIS_SOUNDTRACK`, `JARVIS_SOUNDTRACK_VOLUME`, `PROP_STALE_AFTER`). The
 soundtrack is a file you put in `media/` (served by the dashboard at

@@ -19,8 +19,8 @@ Environment (all optional):
   JARVIS_ACCENTS         1 to start with per-prop accent colours on (toggle in
                          the settings menu).
   JARVIS_SOUNDTRACK      file name in the media folder (MEDIA_DIR) or an http(s)
-                         URL; played once when the view opens and restarted on
-                         every layout switch. Empty = no soundtrack.
+                         URL; played once when the view loads (reload or the ♫
+                         button / key R restarts it). Empty = no soundtrack.
   JARVIS_SOUNDTRACK_VOLUME  0-1, default 0.6.
   MEDIA_DIR              where soundtrack files are served from (/opt/media).
 """
@@ -212,7 +212,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Button("Soundtrack", id="jv-set-sound", n_clicks=0, className="jv-toggle",
                         disabled=not soundtrack,
                         title=None if soundtrack else "Set JARVIS_SOUNDTRACK to enable"),
-            html.Div("Keys: 1-5 layout · [ ] previous/next prop · C classic · M sound", className="jv-muted"),
+            html.Div("Keys: 1-5 layout · [ ] previous/next prop · C classic · M sound on/off · R restart track", className="jv-muted"),
     ])
 
     # Slim top bar: global inputs and view controls. The brand and status
@@ -222,6 +222,9 @@ def create_app(server, mqtt, classic_url="/classic/"):
         html.Div(id="jv-systems", className="jv-systems jv-head-only"),
         html.Div(className="jv-controls", children=[
             html.Div(className="jv-topbar", children=[p["layout"]() for p in topbar]),
+            # Restarts the soundtrack from the beginning (handled in jarvis.js, key R)
+            *([html.Button("♫", id="jv-sound-restart", className="jv-sound-btn",
+                           title="Restart the soundtrack (key R)")] if soundtrack else []),
             html.Div(className="jv-switch", role="group", children=[
                 html.Button(label, id=f"jv-l-{key}", n_clicks=0, title=f"{desc} (key {i + 1})",
                             className="jv-switch-btn")
@@ -291,7 +294,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Footer(className="jv-footer", children=[
                 html.Span("COMMS", className="jv-footer-tag"),
                 html.Div(id="jv-ticker", className="jv-ticker"),
-                html.Span("1-5 layout   C classic   M sound", className="jv-keys"),
+                html.Span("1-5 layout   C classic   M sound   R restart track", className="jv-keys"),
             ]),
         ],
     )

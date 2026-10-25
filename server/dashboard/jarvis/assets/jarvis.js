@@ -3,7 +3,6 @@
   const LAYOUTS = ["grid", "grid2", "focus", "ops", "kiosk"];
   const urlLayout = new URLSearchParams(window.location.search).get("layout");
   let overrideLayout = LAYOUTS.includes(urlLayout) ? urlLayout : null;  // ?layout= wins until a click
-  let lastLayout = null;
   let classicUrl = "/classic/";
   let currentFocus = 0;
   let paneCount = 0;
@@ -23,7 +22,7 @@
     return prefs;
   }
 
-  // --- soundtrack: once on open, restarted on every layout switch, never looped
+  // --- soundtrack: once on open, never looped
   function audio() { return document.getElementById("jv-audio"); }
 
   function playFromStart() {
@@ -46,7 +45,11 @@
     }
   }
 
-  function syncSound(prefs, layoutChanged) {
+  // Plays once when the page loads. Layout changes never touch it; turning the
+  // sound off pauses and turning it on resumes. Only a page reload or the ♫
+  // button (key R) start it from the beginning.
+  let soundStarted = false;
+  function syncSound(prefs) {
     const a = audio();
     if (!a) return;
     const vol = parseFloat(a.dataset.volume || "0.6");
@@ -54,8 +57,26 @@
     const wasOn = a.dataset.on === "1";
     a.dataset.on = prefs.sound ? "1" : "0";
     if (!prefs.sound) { a.pause(); return; }
-    if (layoutChanged || !wasOn) playFromStart();
+    if (wasOn) return;
+    if (!soundStarted) { soundStarted = true; playFromStart(); }
+    else if (!a.ended) { a.play().catch(function () {}); }
   }
+
+  function restartSound() {
+    const a = audio();
+    if (!a || !a.getAttribute("src")) return;
+    if (a.dataset.on !== "1") {             // sound is off: switch it on, which starts it
+      soundStarted = false;
+      const t = document.getElementById("jv-set-sound");
+      if (t && !t.disabled) t.click();
+      return;
+    }
+    soundStarted = true;
+    playFromStart();
+  }
+  document.addEventListener("click", function (ev) {
+    if (ev.target.closest && ev.target.closest("#jv-sound-restart")) restartSound();
+  });
 
   window.dash_clientside = Object.assign({}, window.dash_clientside, {
     jarvis: {
@@ -107,9 +128,7 @@
         currentFocus = focus;
         paneCount = panes.length;
 
-        const layoutChanged = lastLayout !== null && lastLayout !== prefs.layout;
-        lastLayout = prefs.layout;
-        syncSound(prefs, layoutChanged);
+        syncSound(prefs);
 
         const root = "jv jv-layout-" + prefs.layout + (prefs.accents ? " jv-accents" : "") +
           (prefs.theme === "flame" ? " jv-theme-flame" : "");
@@ -177,6 +196,8 @@
       window.location.href = classicUrl;
     } else if (ev.key === "m" || ev.key === "M") {
       click("jv-set-sound");
+    } else if (ev.key === "r" || ev.key === "R") {
+      restartSound();
     } else if ((ev.key === "[" || ev.key === "]") && paneCount > 0) {
       const next = (currentFocus + (ev.key === "]" ? 1 : paneCount - 1)) % paneCount;
       click(JSON.stringify({ index: next, type: "jv-focus-row" }));

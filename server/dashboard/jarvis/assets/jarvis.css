@@ -687,3 +687,10 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   .jv-layout-grid2 .jv-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
   .jv-layout-focus .jv-panes { grid-template-rows: none; }
 }
+/* Soundtrack restart button in the top bar */
+.jv-sound-btn {
+  background: transparent; border: 1px solid var(--jv-line); color: var(--jv-cyan);
+  width: 30px; height: 28px; line-height: 1; cursor: pointer; font-size: .95rem;
+}
+.jv-sound-btn:hover { border-color: var(--jv-line-strong); box-shadow: 0 0 10px rgba(var(--jv-glow-rgb), .4); }
+.jv-layout-kiosk .jv-sound-btn { opacity: .35; }
