@@ -157,6 +157,12 @@ def create_app(server, mqtt, classic_url="/classic/"):
     n = max(len(cards), 1)
     cols = n if n <= 4 else math.ceil(n / 2)
 
+    # MQTT prop id behind each pane, to match rail rows with availability/state
+    pane_props = []
+    for p in cards:
+        topic = getattr(p.get("instance"), "T_AVAIL", None)
+        pane_props.append(topic.split("/")[1] if isinstance(topic, str) and topic.count("/") >= 2 else None)
+
     def _accent(i, p):
         return getattr(p.get("instance"), "ACCENT", None) or PALETTE[i % len(PALETTE)]
 
@@ -177,10 +183,15 @@ def create_app(server, mqtt, classic_url="/classic/"):
         for i, p in enumerate(cards)
     ]
 
-    reactor = html.Div(className="jv-reactor", children=[
-        html.Div(className="jv-ring r1"), html.Div(className="jv-ring r2"),
-        html.Div(className="jv-ring r3"), html.Div(className="jv-core"),
-    ])
+    def _reactor(core=None, extra=""):
+        rings = [html.Div(className="jv-ring r1"), html.Div(className="jv-ring r2"), html.Div(className="jv-ring r3")]
+        return html.Div(className=f"jv-reactor {extra}".strip(), children=rings + [core or html.Div(className="jv-core")])
+
+    def _brand(extra=""):
+        return html.Div(className=f"jv-brand-text {extra}".strip(), children=[
+            html.Div("J.A.R.V.I.S.", className="jv-title"),
+            html.Div("Halloween orchestration · live", className="jv-subtitle"),
+        ])
 
     soundtrack = _soundtrack_url()
     # The panel sits outside the header: the header's clip-path would cut it off
@@ -197,18 +208,14 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Button("Soundtrack", id="jv-set-sound", n_clicks=0, className="jv-toggle",
                         disabled=not soundtrack,
                         title=None if soundtrack else "Set JARVIS_SOUNDTRACK to enable"),
-            html.Div("Keys: 1-4 layout · C classic · M sound", className="jv-muted"),
+            html.Div("Keys: 1-4 layout · [ ] previous/next prop · C classic · M sound", className="jv-muted"),
     ])
 
+    # Slim top bar: global inputs and view controls. The brand and status
+    # chips only show in layouts without the systems rail (grid, kiosk).
     header = html.Header(className="jv-header", children=[
-        html.Div(className="jv-brand", children=[
-            reactor,
-            html.Div([
-                html.Div("J.A.R.V.I.S.", className="jv-title"),
-                html.Div("Halloween orchestration · live", className="jv-subtitle"),
-            ]),
-        ]),
-        html.Div(id="jv-systems", className="jv-systems"),
+        html.Div(className="jv-brand jv-head-only", children=[_reactor(), _brand()]),
+        html.Div(id="jv-systems", className="jv-systems jv-head-only"),
         html.Div(className="jv-controls", children=[
             html.Div(className="jv-topbar", children=[p["layout"]() for p in topbar]),
             html.Div(className="jv-switch", role="group", children=[
@@ -216,22 +223,34 @@ def create_app(server, mqtt, classic_url="/classic/"):
                             className="jv-switch-btn")
                 for i, (key, label, desc) in enumerate(LAYOUTS)
             ]),
-            html.A("Classic view", href=classic_url, className="jv-classic", title="Back to the original dashboard (key C)"),
+            html.A("Classic", href=classic_url, className="jv-classic", title="Back to the original dashboard (key C)"),
             settings,
             html.Div(id="jv-clock", className="jv-clock", children="--:--:--"),
         ]),
     ])
 
-    rail = html.Aside(className="jv-rail", children=[
-        html.Div(className="jv-rail-reactor", children=[
-            html.Div(className="jv-reactor big", children=[
-                html.Div(className="jv-ring r1"), html.Div(className="jv-ring r2"),
-                html.Div(className="jv-ring r3"),
-                html.Div(id="jv-reactor-count", className="jv-core-label", children="0/0"),
+    # Systems rail (ops, focus): full height, brand on top, one row per prop
+    # pane (click to focus it), other systems, comms log
+    prop_rows = [
+        html.Button(
+            id={"type": "jv-focus-row", "index": i}, n_clicks=0, className="jv-proprow",
+            title="Show this prop in Focus", style={"--jv-prop-accent": _accent(i, p)},
+            children=html.Div(id={"type": "jv-row-body", "index": i}, className="jv-sysrow idle", children=[
+                html.Span(className="jv-dot"),
+                html.Div([html.Div(p["name"], className="jv-sysrow-name"),
+                          html.Div("unknown", className="jv-sysrow-meta")]),
             ]),
-            html.Div("Systems online", className="jv-rail-caption"),
+        )
+        for i, p in enumerate(cards)
+    ]
+    rail = html.Aside(className="jv-rail", children=[
+        html.Div(className="jv-rail-brand", children=[
+            _reactor(html.Div(id="jv-reactor-count", className="jv-core-label", children="0/0"), "gauge"),
+            html.Div([_brand(), html.Div("systems online", className="jv-rail-caption")]),
         ]),
-        html.Div("Systems", className="jv-rail-head"),
+        html.Div("Props", className="jv-rail-head"),
+        html.Div(className="jv-rail-systems", children=prop_rows),
+        html.Div("Other systems", className="jv-rail-head"),
         html.Div(id="jv-rail-systems", className="jv-rail-systems"),
         html.Div("Comms log", className="jv-rail-head"),
         html.Div(id="jv-log", className="jv-log"),
@@ -256,10 +275,10 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Audio(id="jv-audio", src=soundtrack or None, preload="auto",
                        **{"data-volume": os.getenv("JARVIS_SOUNDTRACK_VOLUME", "0.6")}),
             html.Div(className="jv-bg"),
+            rail,
             header,
             settings_panel,
             html.Main(className="jv-main", children=[
-                rail,
                 html.Div(className="jv-panes", children=panes or [
                     html.Div("No prop plugins loaded.", className="jv-empty")
                 ]),
@@ -292,6 +311,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
         Output("jv-prefs", "data"),
         [Input(f"jv-l-{key}", "n_clicks") for key in LAYOUT_KEYS],
         Input({"type": "jv-focus", "index": ALL}, "n_clicks"),
+        Input({"type": "jv-focus-row", "index": ALL}, "n_clicks"),
         [Input(t, "n_clicks") for t in toggles],
         State("jv-prefs", "data"),
         State("jv-defaults", "data"),
@@ -303,6 +323,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
         Output({"type": "jv-pane", "index": ALL}, "className"),
         [Output(f"jv-l-{key}", "className") for key in LAYOUT_KEYS],
         [Output(t, "className") for t in toggles],
+        Output({"type": "jv-focus-row", "index": ALL}, "className"),
         Input("jv-prefs", "data"),
         State("jv-defaults", "data"),
     )
@@ -339,6 +360,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
 
     @app.callback(
         Output("jv-systems", "children"),
+        Output({"type": "jv-row-body", "index": ALL}, "children"),
+        Output({"type": "jv-row-body", "index": ALL}, "className"),
         Output("jv-rail-systems", "children"),
         Output("jv-reactor-count", "children"),
         Output("jv-log", "children"),
@@ -351,6 +374,25 @@ def create_app(server, mqtt, classic_url="/classic/"):
             entries = list(log)
         chips, rows = [], []
         levels = {prop: _level(prop, s) for prop, s in items}
+        status = dict(items)
+
+        def meta(prop, sys_, lvl):
+            return f"{sys_['avail']}{' (stale)' if lvl == 'stale' else ''} · {sys_['state']}"
+
+        # One fixed rail row per prop pane (clickable); the rest go under "Other systems"
+        row_children, row_classes = [], []
+        for i, p in enumerate(cards):
+            prop = pane_props[i]
+            sys_ = status.get(prop, {"avail": "unknown", "state": "unknown", "changed": 0})
+            lvl = levels.get(prop, "idle")
+            row_classes.append(f"jv-sysrow {lvl}")
+            row_children.append([
+                html.Span(className="jv-dot"),
+                html.Div([html.Div(p["name"], className="jv-sysrow-name"),
+                          html.Div(meta(prop, sys_, lvl), className="jv-sysrow-meta")]),
+                html.Span(_fmt_ts(sys_["changed"]) if sys_["changed"] else "", className="jv-sysrow-ts"),
+            ])
+
         for prop, sys_ in items:
             lvl = levels[prop]
             shown = "stale" if lvl == "stale" else sys_["state"]
@@ -359,19 +401,21 @@ def create_app(server, mqtt, classic_url="/classic/"):
                 html.Span(_label(prop), className="jv-chip-name"),
                 html.Span(shown, className="jv-chip-state"),
             ]))
+            if prop in pane_props:
+                continue
             rows.append(html.Div(className=f"jv-sysrow {lvl}", children=[
                 html.Span(className="jv-dot"),
                 html.Div([
                     html.Div(_label(prop), className="jv-sysrow-name"),
-                    html.Div(f"{sys_['avail']}{' (stale)' if lvl == 'stale' else ''} · {sys_['state']}",
-                             className="jv-sysrow-meta"),
+                    html.Div(meta(prop, sys_, lvl), className="jv-sysrow-meta"),
                 ]),
                 html.Span(_fmt_ts(sys_["changed"]) if sys_["changed"] else "", className="jv-sysrow-ts"),
             ]))
         online = sum(1 for lvl in levels.values() if lvl == "ok")
         if not items:
             chips = [html.Div("Waiting for systems…", className="jv-chip idle")]
-            rows = [html.Div("No availability messages yet.", className="jv-muted")]
+        if not rows:
+            rows = [html.Div("None reporting.", className="jv-muted")]
 
         kinds = {"tx": "TX", "avail": "LNK", "state": "STA", "vol": "VOL"}
         log_rows = [
@@ -387,7 +431,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Span(className=f"jv-tick {kind}", children=f"{_fmt_ts(ts)} {_label(prop)} › {text}")
             for ts, kind, prop, text in entries[:6]
         ] or [html.Span("Standing by.", className="jv-tick")]
-        return chips, rows, f"{online}/{len(items)}", log_rows, ticker
+        return chips, row_children, row_classes, rows, f"{online}/{len(items)}", log_rows, ticker
 
     print(f"[jarvis] Jarvis dashboard mounted at {URL_BASE} with {len(cards)} pane(s); "
           f"default layout {defaults['layout']}, soundtrack {'on' if soundtrack else 'off'}")

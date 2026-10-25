@@ -353,33 +353,7 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   grid-auto-rows: minmax(0, 1fr);
 }
 
-/* 2. FOCUS: one hero pane, the others stacked compactly on the right */
-.jv-layout-focus .jv-panes {
-  grid-template-columns: minmax(0, 2.2fr) minmax(300px, 1fr);
-  grid-auto-rows: minmax(0, 1fr);
-  grid-auto-flow: row dense;
-}
-.jv-layout-focus .jv-pane { grid-column: 2; }
-.jv-layout-focus .jv-pane.is-focus {
-  grid-column: 1; grid-row: 1 / span var(--jv-side);
-  border-color: var(--jv-line-strong);
-  box-shadow: 0 0 40px rgba(0, 212, 255, 0.12), inset 0 0 60px rgba(0, 212, 255, 0.05);
-}
-.jv-layout-focus .jv-pane.is-focus h4 { font-size: 1.25rem; }
-.jv-layout-focus .jv-pane.is-focus .jv-focus-btn { color: var(--jv-cyan); }
-.jv-layout-focus .jv-pane:not(.is-focus) [id$="-telem"] { display: none; }
-.jv-layout-focus .jv-pane:not(.is-focus) { cursor: default; }
-.jv-layout-focus .jv-pane:not(.is-focus) .jv-pane-body { padding-bottom: 10px; }
-
-/* 3. OPS: command rail on the left, panes in a two-column board */
-.jv-layout-ops .jv-main { grid-template-columns: 320px minmax(0, 1fr); }
-.jv-layout-ops .jv-rail { display: flex; }
-.jv-layout-ops .jv-panes {
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-  overflow: auto;
-}
-.jv-layout-ops .jv-footer .jv-ticker, .jv-layout-ops .jv-footer-tag { visibility: hidden; }
+/* 2. FOCUS and 3. OPS: see "Frame" at the end of the file */
 
 /* 4. KIOSK: wall screen, status only. Every control is hidden. */
 .jv-layout-kiosk .jv-panes {
@@ -515,3 +489,114 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   width: 26px; height: 24px; line-height: 1; cursor: pointer; font-size: .8rem;
 }
 .jv-settings-close:hover { color: var(--jv-bad); border-color: var(--jv-bad); }
+
+/* ================================================================ FRAME
+   Grid / Kiosk: slim top bar (brand + status chips + controls) over the panes.
+   Ops / Focus:  full-height systems rail on the left holding the brand,
+                 slim top bar with only the global controls, panes fill the rest. */
+.jv {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "top" "main" "foot";
+  gap: 10px; padding: 10px;
+}
+.jv-header { grid-area: top; padding: 4px 12px; gap: 12px; min-height: 40px;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px)); }
+.jv-main { grid-area: main; display: flex; min-height: 0; min-width: 0; }
+.jv-panes { flex: 1 1 auto; min-width: 0; }
+.jv-footer { grid-area: foot; padding: 3px 10px; }
+.jv-rail { grid-area: rail; }
+.jv-header .jv-reactor { width: 30px; height: 30px; }
+.jv-header .jv-title { font-size: 1rem; letter-spacing: .26em; }
+.jv-header .jv-subtitle { display: none; }
+.jv-header .jv-controls { gap: 10px; }
+.jv-header .jv-clock { font-size: .95rem; }
+.jv-chip { padding: 2px 8px; font-size: .7rem; }
+
+.jv-layout-ops, .jv-layout-focus {
+  grid-template-columns: 290px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "rail top" "rail main";
+}
+.jv-layout-ops .jv-head-only, .jv-layout-focus .jv-head-only,
+.jv-layout-ops .jv-footer, .jv-layout-focus .jv-footer { display: none !important; }
+.jv-layout-ops .jv-header .jv-controls, .jv-layout-focus .jv-header .jv-controls { margin-left: auto; }
+.jv-layout-ops .jv-rail, .jv-layout-focus .jv-rail { display: flex; }
+
+/* ---- rail ---- */
+.jv-rail { flex-direction: column; gap: 8px; padding: 12px; min-height: 0; overflow: hidden; }
+.jv-rail-brand { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--jv-line); }
+.jv-rail-brand .jv-reactor.gauge { width: 76px; height: 76px; flex: none; }
+.jv-rail-brand .jv-core-label { font-size: 1.05rem; }
+.jv-rail-brand .jv-title { font-size: 1.1rem; letter-spacing: .24em; }
+.jv-rail-brand .jv-subtitle { font-size: .62rem; letter-spacing: .14em; }
+.jv-rail-brand .jv-rail-caption { margin-top: 4px; font-size: .6rem; }
+.jv-rail-head { margin-top: 4px; }
+.jv-rail-systems { gap: 4px; }
+.jv-sysrow { padding: 4px 8px; gap: 8px; }
+.jv-sysrow-name { font-size: .8rem; }
+.jv-sysrow-meta, .jv-sysrow-ts { font-size: .64rem; }
+.jv-proprow {
+  all: unset; display: block; cursor: pointer; box-sizing: border-box; width: 100%;
+  border-right: 2px solid transparent;
+}
+.jv-proprow:hover .jv-sysrow { background: rgba(0, 212, 255, 0.08); }
+.jv-proprow:focus-visible { outline: 1px solid var(--jv-cyan); }
+.jv-accents .jv-proprow .jv-sysrow-name { color: color-mix(in srgb, var(--jv-prop-accent) 70%, white); }
+.jv-layout-focus .jv-proprow.is-focus { border-right-color: var(--jv-cyan); }
+.jv-layout-focus .jv-proprow.is-focus .jv-sysrow { background: rgba(0, 212, 255, 0.12); }
+.jv-log { font-size: .68rem; }
+
+/* ---- OPS: panes in a two-column board ---- */
+.jv-layout-ops .jv-panes {
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  overflow: auto;
+}
+
+/* ---- FOCUS: only the selected prop, full size; switch in the rail or with [ ] ---- */
+.jv-layout-focus .jv-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.jv-layout-focus .jv-pane:not(.is-focus) { display: none; }
+.jv-layout-focus .jv-pane.is-focus { box-shadow: 0 0 40px rgba(0, 212, 255, 0.10), inset 0 0 60px rgba(0, 212, 255, 0.04); }
+.jv-layout-focus .jv-pane h4 { font-size: 1.2rem; }
+.jv-layout-focus .jv-focus-btn { display: none; }
+
+/* ---- pane: compact, controls left / status right when there is room ---- */
+.jv-pane-tag { padding: 4px 12px 0 calc(var(--jv-cut) + 6px); font-size: .6rem; }
+.jv-pane-body { padding: 2px 14px 12px; container-type: inline-size; }
+.jv-pane h4 { margin-bottom: 8px; padding-bottom: 6px; font-size: .9rem; }
+.jv-pane .hw-row { margin-bottom: 6px !important; gap: 5px !important; }
+.jv-pane button:not(.jv-focus-btn):not(.dash-input-stepper) { padding: 3px 10px; min-height: 26px; font-size: .78rem; }
+.jv-pane .btn-primary, .jv-pane .btn-success, .jv-pane .btn-danger, .jv-pane .btn-warning { min-width: 66px; font-size: .66rem; }
+.jv-pane label, .jv-pane .hw-row-label { min-width: 3.8em; font-size: .64rem; }
+.jv-pane table.table { font-size: .7rem; }
+.jv-pane table td { padding: 2px 5px; }
+@container (min-width: 600px) {
+  .hw-prop-body {
+    display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: start;
+  }
+  .hw-prop-status [id$="-telem"] {
+    margin-top: 0 !important; padding: 0 0 0 14px !important; border-top: 0 !important;
+    border-left: 1px dashed var(--jv-line);
+  }
+}
+.jv-layout-kiosk .hw-prop-body { display: block; }
+.jv-layout-kiosk .hw-prop-status [id$="-telem"] { border-left: 0; padding-left: 0 !important; }
+
+@media (max-width: 900px) {
+  .jv, .jv-layout-ops, .jv-layout-focus {
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: auto;
+    grid-template-areas: "top" "rail" "main" "foot";
+  }
+  .jv-layout-ops .jv-rail, .jv-layout-focus .jv-rail { max-height: none; overflow: visible; }
+  .jv-log { max-height: 240px; }
+}
+/* Keep "− slider +" on one line */
+.jv-pane .hw-row:has(.hw-slider) { flex-wrap: nowrap !important; }
+.jv-pane .hw-row:has(.hw-slider) .hw-slider { min-width: 0; }
+/* Focus has the room: larger controls and status */
+.jv-layout-focus .jv-pane button:not(.jv-focus-btn):not(.dash-input-stepper) { padding: 6px 16px; min-height: 34px; font-size: .9rem; }
+.jv-layout-focus .jv-pane .hw-row { margin-bottom: 10px !important; gap: 8px !important; }
+.jv-layout-focus .jv-pane table.table { font-size: .85rem; }
+.jv-layout-focus .jv-pane table td { padding: 4px 8px; }
+.jv-layout-focus .jv-pane label, .jv-layout-focus .jv-pane .hw-row-label { font-size: .72rem; min-width: 4.5em; }

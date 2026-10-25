@@ -5,6 +5,8 @@
   let overrideLayout = LAYOUTS.includes(urlLayout) ? urlLayout : null;  // ?layout= wins until a click
   let lastLayout = null;
   let classicUrl = "/classic/";
+  let currentFocus = 0;
+  let paneCount = 0;
 
   function triggeredId() {
     const ctx = window.dash_clientside.callback_context;
@@ -64,7 +66,7 @@
         const id = triggeredId();
         if (typeof id === "string" && id.startsWith("jv-l-")) {
           stored.layout = id.slice(5);
-        } else if (id && id.type === "jv-focus") {
+        } else if (id && (id.type === "jv-focus" || id.type === "jv-focus-row")) {
           stored.focus = id.index;
           stored.layout = "focus";
         } else if (id === "jv-set-accents") {
@@ -98,13 +100,18 @@
         const toggles = [prefs.accents, prefs.sound].map(function (on) {
           return on ? "jv-toggle on" : "jv-toggle";
         });
+        const rows = (ctx.outputs_list[ctx.outputs_list.length - 1] || []).map(function (_, i) {
+          return i === focus ? "jv-proprow is-focus" : "jv-proprow";
+        });
+        currentFocus = focus;
+        paneCount = panes.length;
 
         const layoutChanged = lastLayout !== null && lastLayout !== prefs.layout;
         lastLayout = prefs.layout;
         syncSound(prefs, layoutChanged);
 
         const root = "jv jv-layout-" + prefs.layout + (prefs.accents ? " jv-accents" : "");
-        return [root, paneClasses].concat(layoutButtons, toggles);
+        return [root, paneClasses].concat(layoutButtons, toggles, [rows]);
       },
 
       toggleSettings: function (_, __, cls) {
@@ -149,6 +156,9 @@
       window.location.href = classicUrl;
     } else if (ev.key === "m" || ev.key === "M") {
       click("jv-set-sound");
+    } else if ((ev.key === "[" || ev.key === "]") && paneCount > 0) {
+      const next = (currentFocus + (ev.key === "]" ? 1 : paneCount - 1)) % paneCount;
+      click(JSON.stringify({ index: next, type: "jv-focus-row" }));
     }
   });
 })();

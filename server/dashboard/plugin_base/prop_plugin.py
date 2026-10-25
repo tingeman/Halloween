@@ -138,8 +138,13 @@ class PropPlugin(CommandUI, BasePlugin):
                 html.Span(id=self.cid("availability"), className="ms-2", children=[badge("unknown")]),
                 html.Span(id=self.cid("state"), className="ms-2", children=[badge("unknown")]),
             ]),
-            *self.controls(),
-            html.Div(id=self.cid("telem"), className="small"),
+            # Controls and status side by side where there is room (Jarvis), stacked otherwise
+            html.Div(className="hw-prop-body", children=[
+                html.Div(className="hw-prop-controls", children=self.controls()),
+                html.Div(className="hw-prop-status", children=[
+                    html.Div(id=self.cid("telem"), className="small"),
+                ]),
+            ]),
         ])
 
     # --- register ---------------------------------------------------------------
@@ -149,9 +154,16 @@ class PropPlugin(CommandUI, BasePlugin):
         self.mqtt_subscribe(self.T_STATE, lambda t, p: self.cache.set(self._key("state"), _text(p, "state")))
         self.mqtt_subscribe(self.T_TELEMETRY, self._on_telem)
 
-        app.callback(Output(self.cid("availability"), "children"), Input(self._tick, "n_intervals"))(self._render_avail)
-        app.callback(Output(self.cid("state"), "children"), Input(self._tick, "n_intervals"))(self._render_state)
-        app.callback(Output(self.cid("telem"), "children"), Input(self._tick, "n_intervals"))(self._render_telem)
+        # One request per prop per tick: separate callbacks per badge starve the
+        # last props when the browser's request queue backs up.
+        @app.callback(
+            Output(self.cid("availability"), "children"),
+            Output(self.cid("state"), "children"),
+            Output(self.cid("telem"), "children"),
+            Input(self._tick, "n_intervals"),
+        )
+        def _render(n):
+            return self._render_avail(n), self._render_state(n), self._render_telem(n)
         self.register_controls(app)
 
     def _on_telem(self, topic, payload: bytes):
