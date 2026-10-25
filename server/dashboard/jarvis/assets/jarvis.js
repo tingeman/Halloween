@@ -1,7 +1,10 @@
-// Clientside callbacks and keyboard shortcuts for the Jarvis dashboard.
+// Clientside callbacks, soundtrack and keyboard shortcuts for the Jarvis dashboard.
 (function () {
-  const LAYOUTS = ["grid", "focus", "ops"];
-  const DEFAULTS = { layout: "grid", focus: 0 };
+  const LAYOUTS = ["grid", "focus", "ops", "kiosk"];
+  const urlLayout = new URLSearchParams(window.location.search).get("layout");
+  let overrideLayout = LAYOUTS.includes(urlLayout) ? urlLayout : null;  // ?layout= wins until a click
+  let lastLayout = null;
+  let classicUrl = "/classic/";
 
   function triggeredId() {
     const ctx = window.dash_clientside.callback_context;
@@ -11,34 +14,101 @@
     try { return JSON.parse(id); } catch (e) { return id; }
   }
 
+  function effective(stored, defaults) {
+    const prefs = Object.assign({ focus: 0 }, defaults || {}, stored || {});
+    if (overrideLayout) prefs.layout = overrideLayout;
+    if (!LAYOUTS.includes(prefs.layout)) prefs.layout = "grid";
+    return prefs;
+  }
+
+  // --- soundtrack: once on open, restarted on every layout switch, never looped
+  function audio() { return document.getElementById("jv-audio"); }
+
+  function playFromStart() {
+    const a = audio();
+    if (!a || !a.getAttribute("src")) return;
+    a.loop = false;
+    try { a.currentTime = 0; } catch (e) { /* not loaded yet */ }
+    const p = a.play();
+    if (p && p.catch) {
+      p.catch(function () {
+        // Autoplay blocked: start on the first click or key press instead
+        const start = function () {
+          document.removeEventListener("pointerdown", start, true);
+          document.removeEventListener("keydown", start, true);
+          if (a.dataset.on === "1") { a.currentTime = 0; a.play().catch(function () {}); }
+        };
+        document.addEventListener("pointerdown", start, true);
+        document.addEventListener("keydown", start, true);
+      });
+    }
+  }
+
+  function syncSound(prefs, layoutChanged) {
+    const a = audio();
+    if (!a) return;
+    const vol = parseFloat(a.dataset.volume || "0.6");
+    a.volume = isNaN(vol) ? 0.6 : Math.min(Math.max(vol, 0), 1);
+    const wasOn = a.dataset.on === "1";
+    a.dataset.on = prefs.sound ? "1" : "0";
+    if (!prefs.sound) { a.pause(); return; }
+    if (layoutChanged || !wasOn) playFromStart();
+  }
+
   window.dash_clientside = Object.assign({}, window.dash_clientside, {
     jarvis: {
       updatePrefs: function () {
-        const prefs = Object.assign({}, DEFAULTS, arguments[arguments.length - 1] || {});
+        const n = arguments.length;
+        const stored = Object.assign({}, arguments[n - 2] || {});
+        const current = effective(stored, arguments[n - 1]);
         const id = triggeredId();
         if (typeof id === "string" && id.startsWith("jv-l-")) {
-          prefs.layout = id.slice(5);
+          stored.layout = id.slice(5);
         } else if (id && id.type === "jv-focus") {
-          prefs.focus = id.index;
-          prefs.layout = "focus";
+          stored.focus = id.index;
+          stored.layout = "focus";
+        } else if (id === "jv-set-accents") {
+          stored.accents = !current.accents;
+        } else if (id === "jv-set-sound") {
+          stored.sound = !current.sound;
         } else {
           return window.dash_clientside.no_update;
         }
-        return prefs;
+        if (stored.layout && overrideLayout) {
+          overrideLayout = null;
+          const url = new URL(window.location.href);
+          url.searchParams.delete("layout");
+          window.history.replaceState(null, "", url);
+        }
+        return stored;
       },
 
-      applyPrefs: function (stored) {
-        const prefs = Object.assign({}, DEFAULTS, stored || {});
-        if (!LAYOUTS.includes(prefs.layout)) prefs.layout = DEFAULTS.layout;
-        const panes = window.dash_clientside.callback_context.outputs_list[1] || [];
+      applyPrefs: function (stored, defaults) {
+        const prefs = effective(stored, defaults);
+        classicUrl = (defaults && defaults.classicUrl) || classicUrl;
+        const ctx = window.dash_clientside.callback_context;
+        const panes = ctx.outputs_list[1] || [];
         const focus = prefs.focus < panes.length ? prefs.focus : 0;
         const paneClasses = panes.map(function (_, i) {
           return i === focus ? "jv-pane is-focus" : "jv-pane";
         });
-        const buttons = LAYOUTS.map(function (l) {
+        const layoutButtons = LAYOUTS.map(function (l) {
           return l === prefs.layout ? "jv-switch-btn active" : "jv-switch-btn";
         });
-        return ["jv jv-layout-" + prefs.layout, paneClasses].concat(buttons);
+        const toggles = [prefs.accents, prefs.sound].map(function (on) {
+          return on ? "jv-toggle on" : "jv-toggle";
+        });
+
+        const layoutChanged = lastLayout !== null && lastLayout !== prefs.layout;
+        lastLayout = prefs.layout;
+        syncSound(prefs, layoutChanged);
+
+        const root = "jv jv-layout-" + prefs.layout + (prefs.accents ? " jv-accents" : "");
+        return [root, paneClasses].concat(layoutButtons, toggles);
+      },
+
+      toggleSettings: function (_, cls) {
+        return (cls || "").indexOf("open") >= 0 ? "jv-settings-panel" : "jv-settings-panel open";
       },
 
       clock: function () {
@@ -51,12 +121,14 @@
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const tag = (ev.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || ev.target.isContentEditable) return;
-    const idx = ["1", "2", "3"].indexOf(ev.key);
+    const idx = ["1", "2", "3", "4"].indexOf(ev.key);
+    const click = function (id) { const el = document.getElementById(id); if (el && !el.disabled) el.click(); };
     if (idx >= 0) {
-      const btn = document.getElementById("jv-l-" + LAYOUTS[idx]);
-      if (btn) btn.click();
+      click("jv-l-" + LAYOUTS[idx]);
     } else if (ev.key === "c" || ev.key === "C") {
-      window.location.href = "/";
+      window.location.href = classicUrl;
+    } else if (ev.key === "m" || ev.key === "M") {
+      click("jv-set-sound");
     }
   });
 })();

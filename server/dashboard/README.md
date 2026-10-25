@@ -53,3 +53,37 @@ Notes
   instances during discovery (before services like MQTT/cache are passed
   in).
 
+- The loader runs discovery once per view (classic and Jarvis), so each view
+  has its own plugin instances; `layout()` and `register()` are called once
+  per instance.
+
+Prop plugins: PropPlugin
+------------------------
+
+Prop cards should subclass `plugin_base.PropPlugin`; it provides the badges,
+stale detection, telemetry table and shared controls, so every prop looks and
+behaves the same in both views:
+
+```python
+from plugin_base import PropPlugin
+
+class Plugin(PropPlugin):
+    name = "Dungeon Nest"
+    PROP_ID = "dungeon_nest"          # topics under halloween/<PROP_ID>/
+    PREFIX = "dungeon"                # component id prefix, unique per prop
+    ACCENT = "#7dff6a"                # Jarvis accent colour (optional)
+    STOP_COMMANDS = ["stop"]          # what All stop sends (default)
+
+    def controls(self):
+        return [self.state_buttons(pause=True), *self.nest_controls()]
+```
+
+Control helpers (`plugin_base.ui.CommandUI`): `row(label, *children)`
+(`label=None` for no label column), `button(label, cid, command, variant,
+confirm=False, state=[(id, prop)])`, `volume_slider(cid, command, min, max,
+step, value)`, plus `state_buttons()`, `nest_controls()`, `hue_controls()`.
+A command is a str/dict payload or a callable taking the `state` values.
+Controls are wired automatically in `register()`.
+
+Override `parse_telemetry()` or `T_TELEMETRY` when a prop publishes telemetry
+differently (see the Coffin Jumper plugin).

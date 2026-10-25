@@ -1,0 +1,13 @@
+/* Classic view: small additions for the shared plugin controls. */
+.hw-confirming {
+  background: var(--bs-warning) !important; color: #000 !important; border-color: var(--bs-warning) !important;
+  animation: hw-confirm-pulse .6s ease-in-out infinite alternate;
+}
+@keyframes hw-confirm-pulse { to { filter: brightness(1.25); } }
+.hw-row-label { min-width: 4.5em; margin: 0; }
+.hw-slider { flex: 1 1 220px; }
+.hw-slider .dash-slider-container, .hw-slider > div { width: 100%; }
+.navbar .hw-limit-title { color: #ddd; }
+.navbar .hw-global { color: #ddd; }
+.navbar .hw-limit { min-width: 280px !important; }
+.navbar .hw-slider { min-width: 150px; }

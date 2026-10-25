@@ -7,6 +7,7 @@ from plugin_loader import discover_plugins
 from jarvis import create_app as create_jarvis_app
 import os
 import socket
+from flask import redirect
 
 # Env
 MQTT_HOST = os.getenv("MQTT_HOST", "mqtt")
@@ -35,7 +36,12 @@ PLUGINS = discover_plugins("/opt/props", "/app/builtin_plugins")
 
 # Dash app
 external_stylesheets = [dbc.themes.BOOTSTRAP]
-app = Dash(__name__, external_stylesheets=external_stylesheets)
+# Which view "/" opens: "classic" (default) or "jarvis"
+DEFAULT_VIEW = os.getenv("DASHBOARD_DEFAULT_VIEW", "classic").strip().lower()
+CLASSIC_URL = "/classic/"
+
+app = Dash(__name__, external_stylesheets=external_stylesheets, url_base_pathname=CLASSIC_URL,
+           title="Halloween Dashboard")
 app.config.suppress_callback_exceptions = True 
 server = app.server
 
@@ -76,7 +82,7 @@ app.layout = dbc.Container([
 ], fluid=True, style={"height": "100vh", "overflow": "hidden"})
 
 # Register plugin callbacks with shared services
-SERVICES = {"mqtt": mqtt, "cache": CACHE, "app": app, "tick_id": "global-tick"}
+SERVICES = {"mqtt": mqtt, "cache": CACHE, "app": app, "tick_id": "global-tick", "plugins": PLUGINS}
 for p in PLUGINS:
     try:
         p["register"](app, SERVICES)
@@ -84,7 +90,11 @@ for p in PLUGINS:
         print(f"[plugin:{p['name']}] register_callbacks failed: {e}")
 
 # Jarvis-style dashboard at /jarvis/, alongside this one
-create_jarvis_app(server, mqtt)
+jarvis = create_jarvis_app(server, mqtt, classic_url=CLASSIC_URL)
+
+@server.route("/")
+def _default_view():
+    return redirect(jarvis.config.url_base_pathname if DEFAULT_VIEW == "jarvis" else CLASSIC_URL)
 
 def _on_exit():
     mqtt.disconnect()

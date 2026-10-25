@@ -1,29 +1,65 @@
-# Dashboard roadmap (awaiting approval)
+# Dashboard roadmap
 
-Proposed changes that would alter how props are driven from the dashboard.
-None of these are implemented. Each needs Thomas's go before work starts.
+Branch: `develop/2026/agent-jarvis-dashboard`. Items 1-8 were approved by
+Thomas on 2026-10-25 and are implemented; open points are at the bottom.
 
-The Jarvis view itself (branch `develop/2026/agent-jarvis-dashboard`) only
-changes presentation: it renders the existing plugins unchanged and sends
-exactly the same MQTT commands as the classic view.
+## Implemented
 
-## Proposed behaviour changes
+| # | Area | What was done |
+|---|------|---------------|
+| 1 | Tesla, Coffin Jumper | **Open Trunk**, **Close Trunk**, **Resync Tesla** and **Trigger** ask "Confirm?" and only send on a second click within 3 s (`confirm=True` on any button). |
+| 2 | All props | **All stop** in the top bar of both views (double click). Sends each plugin's `STOP_COMMANDS` (`stop` by default; Coffin: `stop_action` + `stop_music`). Tesla's stop is its normal Stop, which also closes the trunk. |
+| 3 | Nest props | **Log status** now sends `{"action": "chromecast", "args": "status"}`; Dungeon, Tesla and Thriller workers publish one `speakers/<name>` telemetry line per speaker (state, volume, cap). |
+| 4 | Tesla, Thriller | The always-disabled **Pause** was removed. A real pause needs a design decision (see open points). |
+| 5 | Coffin Jumper | Explicit **Block** and **Unblock** buttons replace the cached-state toggle. |
+| 6 | All Nest props + Coffin | Volume number box + Set Vol replaced by a slider that sends on release (Nest 0-1, Coffin 0-30). Vol −/+ kept beside it. |
+| 7 | Dashboard | A prop that says online but sends nothing live (retained messages do not count) for `PROP_STALE_AFTER` s (60) shows **stale** (amber) in both views. |
+| 8 | Broker ACL | Dashboard may read `halloween/+/cmd`; the Jarvis comms log shows commands from every source. |
+| + | All props | **Global volume limit** (see below). |
+| + | Jarvis | `DASHBOARD_DEFAULT_VIEW`, `JARVIS_DEFAULT_LAYOUT`, **Kiosk** layout (key 4), per-prop accent colours (⚙ menu or `JARVIS_ACCENTS`), soundtrack (`JARVIS_SOUNDTRACK`). |
 
-| # | Prop / area | Proposal | Why |
-|---|-------------|----------|-----|
-| 1 | Tesla, Coffin Jumper | Two-step confirm ("press again within 3 s") on **Open Trunk**, **Close Trunk**, **Resync Tesla** and **Trigger**. | These move physical things (and Resync may lock the car). One stray click on a touch screen should not do that. |
-| 2 | All props | Global **All stop** button in the Jarvis header that sends `stop` to every worker prop and `stop_action` + `stop_music` to the Coffin Jumper. | One place to silence everything if a scare goes wrong. |
-| 3 | Tesla, Thriller | The **Log status** button (`thn-cc-log`, `thriller-cc-log`) has no callback, so pressing it does nothing. Either wire it to a `{"action": "chromecast", "args": "status"}` command (needs a matching worker handler) or remove it. | Dead button. |
-| 4 | Tesla, Thriller | **Pause** is shown but permanently disabled. Implement pause like Dungeon Nest, or hide it. | Placeholder clutter. |
-| 5 | Coffin Jumper | Replace the single **Block/Unblock** toggle (which decides from the cached state) with explicit **Block** and **Unblock** buttons. | If the cached state is stale, the toggle sends the opposite of what the label shows. |
-| 6 | All Nest props | Replace the number box + **Set Vol** with a slider that sends on release. Payload stays `{"action": "chromecast", "args": {"volume": x}}`. | Faster and harder to mistype (e.g. `5` instead of `0.5`). |
-| 7 | Dashboard / broker | Mark a prop as **stale** when its retained `availability` says online but no telemetry has arrived for N seconds. | Retained "online" survives a worker crash or container stop; the dashboard currently shows stopped props as online. |
-| 8 | Broker ACL | Give the `dashboard` user read access to `halloween/+/cmd`, so the Jarvis comms log shows commands from every source (classic view, scripts), not just the Jarvis view. | Complete audit trail during the night. |
+### Global volume limit
 
-## Dashboard-only ideas (no prop behaviour change)
+- Top-bar slider in both views, 0-100% in steps of 5. Published retained on
+  `halloween/broadcast/volume_limit` as `{"scale": 0.3}`; the broker persists it.
+- Rule (same for every prop, `libs/py/halloween_common/volume_limit.py`):
+  100% = no limit; below that every speaker is capped at
+  `scale × its own default volume`. Requests under the cap are kept; lifting
+  the limit restores what was asked for.
+- Nest speakers: enforced in the shared `halloween_common/chromecast.py`
+  (the three identical `chromecast_API.py` copies now import it). Every
+  volume path goes through the cap, and `refresh()`/`play()` pull a speaker
+  back down if it was raised elsewhere (e.g. the Google Home app).
+- Workers: `BaseWorker` subscribes to the limit and applies it to whatever
+  `volume_targets()` returns. A new prop only needs `volume_targets()` and a
+  call to `apply_volume_limit()` after it (re)connects its speakers.
+- ESP32 coffin: firmware subscribes to the limit, caps the DFPlayer at
+  `scale × DEFAULT_VOLUME` (20) and keeps the last value in
+  `volume_limit.json` on flash, so it holds even if it boots without the broker.
+- Each worker reports `volume/Limit` in its telemetry; the coffin reports
+  `vol_limit` and `vol_effective`.
 
-These could be done without approval, but are listed so they can be weighed together.
+### Adding a prop plugin
 
-- `DASHBOARD_DEFAULT_VIEW=jarvis` env setting to open the Jarvis view at `/`.
-- Per-prop accent colours in the Jarvis view (e.g. Tesla red, Thriller purple).
-- A fourth "Kiosk" layout for a wall screen: status only, no buttons.
+Subclass `PropPlugin` (`server/dashboard/plugin_base/prop_plugin.py`), set
+`PROP_ID`, `PREFIX`, optional `ACCENT` and `STOP_COMMANDS`, and return rows
+from `controls()` built with `self.row()`, `self.button()`,
+`self.volume_slider()`, `self.nest_controls()`, `self.hue_controls()` and
+`self.state_buttons()`. Badges, stale detection, telemetry table, All stop,
+accents and every Jarvis layout then work without further code.
+
+## Needs you before it is live
+
+- **Rebuild and restart**: dashboard image and worker host (shared library,
+  new topics) and **restart the broker** so the new ACL loads.
+- **Flash the coffin ESP32** (`props/coffin_jumper/firmware/main.py`) or it
+  ignores the volume limit. Until then the dashboard still sends its volume.
+- **Soundtrack file**: put the track in `media/` and set `JARVIS_SOUNDTRACK`.
+
+## Open points
+
+| Item | Question |
+|------|----------|
+| Pause for Tesla/Thriller | What should pause mean mid-show: freeze the music only, or also hold the trunk/lights and the motion timeout? Resume would re-run parts of the playing state today. |
+| Volume slider position | Sliders start at 0.5 (Nest) / 20 (Coffin); they do not read the speaker's current volume. Could follow telemetry if workers publish volume. |
+| Coffin "fires" line | The old "fires: —" line was removed: the firmware publishes `triggers`, which is in the telemetry table. |
