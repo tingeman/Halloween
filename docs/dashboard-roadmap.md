@@ -16,7 +16,7 @@ Thomas on 2026-10-25 and are implemented; open points are at the bottom.
 | 7 | Dashboard | A prop that says online but sends nothing live (retained messages do not count) for `PROP_STALE_AFTER` s (60) shows **stale** (amber) in both views. |
 | 8 | Broker ACL | Dashboard may read `halloween/+/cmd`; the Jarvis comms log shows commands from every source. |
 | + | All props | **Global volume limit** (see below). |
-| + | Jarvis | Flame theme (red/orange with flickering flame glow), Blue/Flame toggle in the ⚙ menu, `JARVIS_THEME` default. Focus: selected prop full width at its natural height, the others in a 3-column grid below. |
+| + | Jarvis | Flame theme (red/orange with flickering flame glow), Blue/Flame toggle in the ⚙ menu, `JARVIS_THEME` default. Focus (vertical): rail, the selected prop full height in the middle at Ops control sizes, small cards for the other props on the right with their main action row only. |
 | + | Jarvis | `DASHBOARD_DEFAULT_VIEW`, `JARVIS_DEFAULT_LAYOUT`, **Kiosk** layout (key 4), per-prop accent colours (⚙ menu or `JARVIS_ACCENTS`), soundtrack (`JARVIS_SOUNDTRACK`). |
 
 ### Global volume limit

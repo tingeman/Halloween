@@ -557,12 +557,29 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   overflow: auto;
 }
 
-/* ---- FOCUS: only the selected prop, full size; switch in the rail or with [ ] ---- */
-.jv-layout-focus .jv-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.jv-layout-focus .jv-pane:not(.is-focus) { display: none; }
-.jv-layout-focus .jv-pane.is-focus { box-shadow: 0 0 40px rgba(var(--jv-glow-rgb), 0.10), inset 0 0 60px rgba(var(--jv-glow-rgb), 0.04); }
-.jv-layout-focus .jv-pane h4 { font-size: 1.2rem; }
-.jv-layout-focus .jv-focus-btn { display: none; }
+/* ---- FOCUS: rail | selected prop, full height | small cards for the others ----
+   Same control sizes as Ops. Switch with the rail, a card's ⤢, or [ ]. */
+.jv-layout-focus .jv-panes {
+  grid-template-columns: minmax(0, 1.8fr) minmax(260px, 1fr);
+  grid-template-rows: repeat(var(--jv-side), auto) minmax(0, 1fr);
+  grid-auto-flow: row dense;
+  overflow: hidden;
+}
+.jv-layout-focus .jv-pane.is-focus {
+  grid-column: 1; grid-row: 1 / -1;
+  box-shadow: 0 0 40px rgba(var(--jv-glow-rgb), 0.10), inset 0 0 60px rgba(var(--jv-glow-rgb), 0.04);
+}
+.jv-layout-focus .jv-pane.is-focus .jv-pane-body { overflow: auto; }
+.jv-layout-focus .jv-pane.is-focus .jv-focus-btn { visibility: hidden; }
+.jv-layout-focus .jv-pane:not(.is-focus) { grid-column: 2; }
+/* Side cards: name, badges and the first (main action) row only */
+.jv-layout-focus .jv-pane:not(.is-focus) .hw-prop-status,
+.jv-layout-focus .jv-pane:not(.is-focus) .hw-prop-controls > .hw-row:not(:first-child) { display: none !important; }
+.jv-layout-focus .jv-pane:not(.is-focus) .hw-prop-body { display: block; }
+.jv-layout-focus .jv-pane:not(.is-focus) h4 { font-size: .8rem; margin-bottom: 6px; }
+.jv-layout-focus .jv-pane:not(.is-focus) .jv-pane-body { padding-bottom: 6px; }
+.jv-layout-focus .jv-pane:not(.is-focus) .hw-row { margin-bottom: 0 !important; }
+.jv-layout-focus .jv-pane:not(.is-focus) .hw-row-label { display: none; }
 
 /* ---- pane: compact, controls left / status right when there is room ---- */
 .jv-pane-tag { padding: 4px 12px 0 calc(var(--jv-cut) + 6px); font-size: .6rem; }
@@ -597,13 +614,6 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 /* Keep "− slider +" on one line */
 .jv-pane .hw-row:has(.hw-slider) { flex-wrap: nowrap !important; }
 .jv-pane .hw-row:has(.hw-slider) .hw-slider { min-width: 0; }
-/* Focus has the room: larger controls and status */
-.jv-layout-focus .jv-pane button:not(.jv-focus-btn):not(.dash-input-stepper) { padding: 6px 16px; min-height: 34px; font-size: .9rem; }
-.jv-layout-focus .jv-pane .hw-row { margin-bottom: 10px !important; gap: 8px !important; }
-.jv-layout-focus .jv-pane table.table { font-size: .85rem; }
-.jv-layout-focus .jv-pane table td { padding: 4px 8px; }
-.jv-layout-focus .jv-pane label, .jv-layout-focus .jv-pane .hw-row-label { font-size: .72rem; min-width: 4.5em; }
-
 /* ================================================================ THEMES
    Blue (default) is the :root palette. Flame: embers, orange glow, flicker. */
 .jv-theme-flame {
@@ -653,33 +663,13 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 }
 @keyframes jv-flicker2 { 0%, 100% { opacity: .8; } 20% { opacity: 1; } 45% { opacity: .65; } 70% { opacity: .95; } }
 
-/* ================================================================ FOCUS v2
-   Selected prop full width at its natural height; the others in a
-   3-column grid underneath. The board scrolls if it gets taller. */
-.jv-layout-focus .jv-panes {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: none;
-  grid-auto-rows: auto;
-  align-content: start;
-  overflow: auto;
-}
-.jv-layout-focus .jv-pane:not(.is-focus) { display: flex; }
-.jv-layout-focus .jv-pane.is-focus { grid-column: 1 / -1; order: -1; }
-.jv-layout-focus .jv-pane .jv-pane-body { overflow: visible; }
-.jv-layout-focus .jv-focus-btn { display: inline-block; }
-.jv-layout-focus .jv-pane.is-focus .jv-focus-btn { visibility: hidden; }
-.jv-layout-focus .jv-pane:not(.is-focus) h4 { font-size: .9rem; }
-.jv-layout-focus .jv-pane:not(.is-focus) button:not(.jv-focus-btn):not(.dash-input-stepper) {
-  padding: 3px 10px; min-height: 26px; font-size: .78rem;
-}
-.jv-layout-focus .jv-pane:not(.is-focus) table.table { font-size: .7rem; }
-.jv-layout-focus .jv-pane:not(.is-focus) table td { padding: 2px 5px; }
-.jv-layout-focus .jv-pane:not(.is-focus) .hw-row { margin-bottom: 6px !important; gap: 5px !important; }
-@media (max-width: 1300px) { .jv-layout-focus .jv-panes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 900px) { .jv-layout-focus .jv-panes { grid-template-columns: minmax(0, 1fr); } }
 .jv-toggle.theme::after { content: "BLUE"; color: var(--jv-cyan); }
 .jv-toggle.theme.flame::after { content: "FLAME"; color: #ff7a1a; }
 /* Clock: fixed-width cells so the time (and the bar around it) never shifts */
 .jv-clock { flex: none; display: inline-flex; justify-content: flex-end; min-width: 0; font-variant-numeric: tabular-nums; }
 .jv-clock-digit { display: inline-block; width: .82em; text-align: center; }
 .jv-clock-sep { display: inline-block; width: .42em; text-align: center; }
+@media (max-width: 900px) {
+  .jv-layout-focus .jv-panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; overflow: visible; }
+  .jv-layout-focus .jv-pane.is-focus, .jv-layout-focus .jv-pane:not(.is-focus) { grid-column: 1; grid-row: auto; }
+}

@@ -122,14 +122,6 @@
         return "jv-settings-panel open";
       },
 
-      clock: function () {
-        // One fixed-width cell per character: Orbitron digits differ in width,
-        // so a plain string makes the clock (and the whole bar) jitter.
-        return new Date().toLocaleTimeString("en-GB").split("").map(function (ch) {
-          return { type: "Span", namespace: "dash_html_components",
-                   props: { children: ch, className: ch === ":" ? "jv-clock-sep" : "jv-clock-digit" } };
-        });
-      },
     },
   });
 
@@ -149,6 +141,28 @@
     if (gear && gear.contains(ev.target)) return;   // the gear toggles it itself
     closeSettings();
   }, true);
+
+  // Clock: one fixed-width cell per character (Orbitron digits differ in width),
+  // updated by a timer re-armed for each next whole second so it never drifts.
+  function tickClock() {
+    const el = document.getElementById("jv-clock");
+    if (el) {
+      const text = new Date().toLocaleTimeString("en-GB");
+      if (el.childElementCount !== text.length) {
+        el.textContent = "";
+        for (const ch of text) {
+          const s = document.createElement("span");
+          s.className = ch === ":" ? "jv-clock-sep" : "jv-clock-digit";
+          el.appendChild(s);
+        }
+      }
+      for (let i = 0; i < text.length; i++) {
+        if (el.children[i].textContent !== text[i]) el.children[i].textContent = text[i];
+      }
+    }
+    setTimeout(tickClock, 1000 - (Date.now() % 1000) + 5);
+  }
+  tickClock();
 
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape" && settingsOpen()) { closeSettings(); return; }

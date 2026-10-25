@@ -228,7 +228,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             ]),
             html.A("Classic", href=classic_url, className="jv-classic", title="Back to the original dashboard (key C)"),
             settings,
-            html.Div(id="jv-clock", className="jv-clock", children="--:--:--"),
+            html.Div(id="jv-clock", className="jv-clock"),   # filled by jarvis.js
         ]),
     ])
 
@@ -339,11 +339,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
         State("jv-settings-panel", "className"),
         prevent_initial_call=True,
     )
-    app.clientside_callback(
-        ClientsideFunction("jarvis", "clock"),
-        Output("jv-clock", "children"),
-        Input("global-tick", "n_intervals"),
-    )
+    # The clock is driven by a browser timer aligned to whole seconds (jarvis.js),
+    # not by global-tick, which drifts and bunches up behind server callbacks.
 
     # --- Systems overview, rail and comms log ---------------------------------
     def _level(prop, sys_):
