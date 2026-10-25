@@ -1,401 +1,51 @@
 """Coffin Jumper plugin (class-based)
 
-This module is intentionally small and defensive: MQTT telemetry updates a
-shared cache and a periodic Dash callback reads that cache to avoid race
-conditions between asynchronous MQTT callbacks and Dash renders.
-
+The ESP32 publishes one JSON telemetry object on <base>/telemetry and takes
+commands as {"action": ..., "params": {...}} on <base>/cmd. Volumes are the
+DFPlayer scale 0-30.
 """
-
-from dash import html, dcc, Input, Output, State
 import json
 
-# Import BasePlugin from the standalone plugin_base package so plugins get thread-safe helpers
-from plugin_base import BasePlugin
+from plugin_base import PropPlugin
 
 
-class Plugin(BasePlugin):
-    """Class-based plugin object for Coffin Jumper.
-
-    The loader will instantiate this class and use its attributes/methods
-    to integrate the plugin into the dashboard. The instance methods mirror
-    the previous module-level API.
-    """
-
+class Plugin(PropPlugin):
     name = "Coffin Jumper"
-    zone = "card"
+    PROP_ID = "esp32-coffin-jumper-01"
+    PREFIX = "cj"
+    ACCENT = "#ffb547"
+    STOP_COMMANDS = [{"action": "stop_action"}, {"action": "stop_music"}]
 
-    T_TEL = "halloween/esp32-coffin-jumper-01/telemetry"
-    T_CMD = "halloween/esp32-coffin-jumper-01/cmd"
-    T_AVAIL = "halloween/esp32-coffin-jumper-01/availability"
-    T_STATE = "halloween/esp32-coffin-jumper-01/state"
+    @property
+    def T_TELEMETRY(self):
+        return f"{self.T_BASE}/telemetry"
 
-    def layout(self):
-        """Return the Dash layout for the plugin."""
-        return html.Div([
-            # Show the prop name and an inline availability badge next to it
-            html.H4([
-                self.name,
-                # outer span has minimal layout responsibility; use a small
-                # Bootstrap spacing utility so the badge doesn't touch the name
-                html.Span(id="cj-availability", className="ms-2", children=[
-                    html.Span("unknown", className="badge bg-secondary text-white")
-                ]),
-                # State badge (like availability, but for the current state)
-                html.Span(id="cj-state", className="ms-2", children=[
-                    html.Span("unknown", className="badge bg-secondary text-white")
-                ]),
-            ]),
-            # Simple text display for the current fire count
-            html.Div(id="cj-fires", children="fires: —"),
-            # Telemetry table: a simple key / value table. The callback
-            # will populate this table with rows showing the current
-            # telemetry snapshot. We keep the initial placeholder so the
-            # DOM element exists before the first tick.
-            html.Div(id="cj-telem", className="small"),
-            html.Div(className="d-flex gap-2 mb-2", children=[
-                html.Button("Trigger", id="cj-trigger", n_clicks=0),
-                html.Button("Stop Action", id="cj-stop-action", n_clicks=0),
-                html.Button("Block", id="cj-block", n_clicks=0),
-                html.Button("Reset", id="cj-reset", n_clicks=0),
-            ]),
-            html.Div(className="d-flex gap-2", children=[
-                html.Button("Play", id="cj-play", n_clicks=0),
-                html.Button("Stop playing", id="cj-stop", n_clicks=0),
-                dcc.Input(id="cj-volume", type="number", min=0, max=30, value=20, placeholder="volume", style={"width": "4em"} ),
-                html.Button("Set Volume", id="cj-set-volume", n_clicks=0),
-            ])
-        ])
+    def parse_telemetry(self, topic, payload: bytes) -> dict:
+        data = json.loads(payload.decode())
+        return {str(k): v for k, v in data.items()} if isinstance(data, dict) else {"telemetry": data}
 
-    def on_register(self, app, services):
-        """Register callbacks and MQTT subscriptions.
+    def controls(self):
+        volume = [(self.cid("volume"), "value")]
 
-        This method is called by BasePlugin.register after services have been
-        bound and helpers (cache_get/cache_set/mqtt_publish) are available.
-        """
+        def with_volume(action):
+            def build(vol):
+                cmd = {"action": action}
+                if vol is not None:
+                    cmd["params"] = {"volume": int(vol)}
+                return cmd
+            return build
 
-        # Subscribe instance method for telemetry using helper
-        self.mqtt_subscribe(self.T_TEL, self._on_telem)
-        # Subscribe to availability (LWT / retained) so we can show online/offline
-        self.mqtt_subscribe(self.T_AVAIL, self._on_avail)
-        # Subscribe to state updates (like availability, but for current state)
-        self.mqtt_subscribe(self.T_STATE, self._on_state)
-
-        # Register Dash callbacks using bound instance methods.
-        # Note: app.callback(...) returns a decorator; calling that decorator
-        # with a callable (here, the bound method `self._render`) registers
-        # the instance method as the callback. Using a bound method ensures
-        # the callback runs with the plugin instance (so `self` is available
-        # for helpers like self.cache_get / self.cache_set). We use
-        # `self._tick` as the Input so this plugin's periodic interval drives
-        # the render.
-        app.callback(
-            Output("cj-fires", "children"),
-            Input(self._tick, "n_intervals"),
-        )(self._render_fire_count)
-
-        # Register a periodic render for the raw telemetry view. We use the
-        # same tick input so both views update together.
-        app.callback(
-            Output("cj-telem", "children"),
-            Input(self._tick, "n_intervals"),
-        )(self._render_telem)
-
-        # Periodic render for availability badge
-        app.callback(
-            Output("cj-availability", "children"),
-            Input(self._tick, "n_intervals"),
-        )(self._render_avail)
-
-        # Periodic render for state badge
-        app.callback(
-            Output("cj-state", "children"),
-            Input(self._tick, "n_intervals"),
-        )(self._render_state)
-
-        # Register trigger button callback
-        # n_clicks is the button click count; by returning 0 from the callback, we prevent multiple clicks
-        # from accumulating in the button state (which would cause repeated triggers on a single press)
-        # On button press the callback is triggered as:
-        # _trigger(n_clicks, volume) -> 0 
-        app.callback(
-            Output("cj-trigger", "n_clicks"),
-            Input("cj-trigger", "n_clicks"),
-            State("cj-volume", "value"),
-            prevent_initial_call=True,
-        )(self._trigger)
-
-        app.callback(
-            Output("cj-stop-action", "n_clicks"),
-            Input("cj-stop-action", "n_clicks"),
-            prevent_initial_call=True,
-        )(self._stop_action)
-
-        app.callback(
-            Output("cj-block", "n_clicks"),
-            Input("cj-block", "n_clicks"),
-            prevent_initial_call=True,
-        )(self._block)
-
-        # Periodic render for block button label (to show if blocking or not)
-        app.callback(
-            Output("cj-block", "children"),
-            Input(self._tick, "n_intervals"),
-        )(self._render_block_label)
-
-        app.callback(
-            Output("cj-reset", "n_clicks"),
-            Input("cj-reset", "n_clicks"),
-            State("cj-volume", "value"),
-            prevent_initial_call=True,
-        )(self._reset_prop)
-
-        app.callback(
-            Output("cj-play", "n_clicks"),
-            Input("cj-play", "n_clicks"),
-            State("cj-volume", "value"),
-            prevent_initial_call=True,
-        )(self._play)
-
-        app.callback(
-            Output("cj-stop", "n_clicks"),
-            Input("cj-stop", "n_clicks"),
-            prevent_initial_call=True,
-        )(self._stop_playing)
-
-        app.callback(
-            Output("cj-set-volume", "n_clicks"),
-            Input("cj-set-volume", "n_clicks"),
-            State("cj-volume", "value"),
-            prevent_initial_call=True,
-        )(self._set_volume)
-
-
-    def _on_telem(self, topic, payload: bytes):
-        """Instance method to handle incoming telemetry payloads."""
-        try:
-            data = json.loads(payload.decode())
-            # Use the thread-safe dict-like cache exposed by BasePlugin.
-            # Store both the derived 'fires' count and the full telemetry
-            # dict. Storing the entire telemetry in the shared cache makes
-            # it easy for render methods to show a snapshot without race
-            # conditions. Be mindful of payload size; if telemetry grows
-            # large, consider trimming or storing only selected fields.
-            self.cache["cj_fires"] = data.get("fires", "—")
-            self.cache["cj_telem"] = data
-        except Exception:
-            self.cache["cj_fires"] = "—"
-            self.cache["cj_telem"] = None
-
-    def _render_fire_count(self, _):
-        """Render callback: read the cached fires count and return text."""
-        return f"fires: {self.cache.get('cj_fires', '—')}"
-
-    def _on_avail(self, topic, payload: bytes):
-        """Handle availability messages (LWT / retained).
-
-        We expect payloads like 'online'/'offline' or JSON with a 'status'
-        field for compatibility with different publishers.
-        """
-        try:
-            text = payload.decode()
-            # try JSON first
-            try:
-                parsed = json.loads(text)
-                status = parsed.get("status") if isinstance(parsed, dict) else None
-            except Exception:
-                status = None
-
-            if not status:
-                # fallback to plain text
-                status = text.strip()
-
-            self.cache["cj_avail"] = status
-        except Exception:
-            self.cache["cj_avail"] = None
-
-    def _render_avail(self, _):
-        """Render the availability badge as a colored inline element."""
-        s = (self.cache.get("cj_avail") or "unknown").lower()
-        if s in ("online", "true", "up"):
-            # Bootstrap green badge
-            return html.Span("online", className="badge bg-success text-white")
-        if s in ("offline", "false", "down"):
-            return html.Span("offline", className="badge bg-danger text-white")
-        return html.Span(s, className="badge bg-secondary text-white")
-
-    def _on_state(self, topic, payload: bytes):
-        """Handle state updates (like availability, but for current state)."""
-        try:
-            text = payload.decode()
-            # try JSON first
-            try:
-                parsed = json.loads(text)
-                state = parsed.get("state") if isinstance(parsed, dict) else None
-            except Exception:
-                state = None
-
-            if not state:
-                # fallback to plain text
-                state = text.strip()
-
-            self.cache["cj_state"] = state
-        except Exception:
-            self.cache["cj_state"] = None
-
-    def _render_state(self, _):
-        """Render the state badge as a colored inline element."""
-        s = (self.cache.get("cj_state") or "unknown").lower()
-        if s in ("idle", "ready", "armed"):
-            # Bootstrap green badge
-            return html.Span(s, className="badge bg-success text-white")
-        if s in ("action", "jumping", "playing"):
-            return html.Span(s, className="badge bg-primary text-white")
-        if s in ("IO Error", "error", "fault"):
-            return html.Span(s, className="badge bg-danger text-white")
-        if s in ("blocked", "blocking"):
-            return html.Span(s, className="badge bg-warning text-dark")
-        return html.Span(s, className="badge bg-secondary text-white")
-
-    def _trigger(self, _, volume):
-        """Handle Trigger button presses and publish MQTT commands."""
-        cmd = {"action": "trigger"}
-        if volume is not None:
-            cmd = {"action": "trigger", "params": {"volume": int(volume)}}
-        # publish using helper made available by BasePlugin
-        self.mqtt_publish(self.T_CMD, json.dumps(cmd))
-        return 0
-
-    def _stop_action(self, _):
-        """Handle Stop Action button presses and publish MQTT 'stop_action' command."""
-        cmd = {"action": "stop_action"}
-        # publish using helper made available by BasePlugin
-        self.mqtt_publish(self.T_CMD, json.dumps(cmd))
-        return 0
-
-    def _render_block_label(self, _):
-        """Return the button label based on the cached state (blocked vs not)."""
-        s = (self.cache.get("cj_state") or "").lower()
-        if s == "blocked":
-            return "Unblock"
-        return "Block"
-    
-    def _block(self, _):
-        """Handle Block button presses and publish MQTT 'block' or 'unblock' command."""
-        s = (self.cache.get("cj_state") or "").lower()
-        if s == "blocked":
-            cmd = {"action": "unblock"}
-        else:
-            cmd = {"action": "block"}
-        # publish using helper made available by BasePlugin
-        self.mqtt_publish(self.T_CMD, json.dumps(cmd))
-        return 0
-
-    def _reset_prop(self, _, volume):
-        """Handle Reset button presses and publish MQTT 'reset' command."""
-        cmd = {"action": "reset"}
-        if volume is not None:
-            cmd["params"] = {"volume": int(volume)}
-        # publish using helper made available by BasePlugin
-        self.mqtt_publish(self.T_CMD, json.dumps(cmd))
-        return 0
-
-    def _play(self, _, volume):
-        """Handle Play button presses and publish MQTT 'play' command."""
-        cmd = {"action": "play_music"}
-        if volume is not None:
-            cmd["params"] = {"volume": int(volume)}
-        # publish using helper made available by BasePlugin
-        self.mqtt_publish(self.T_CMD, json.dumps(cmd))
-        return 0
-
-    def _set_volume(self, n_clicks, volume):
-        """Handle Set Volume button presses and publish MQTT 'set_volume' command."""
-        if volume is None:
-            return 0  # ignore if no volume provided
-        cmd = {"action": "set_volume", "params": {"volume": int(volume)}}
-        # publish using helper made available by BasePlugin
-        self.mqtt_publish(self.T_CMD, json.dumps(cmd))
-        return 0
-
-    def _stop_playing(self, _):
-        """Handle Stop button presses and publish MQTT 'stop' command."""
-        cmd = {"action": "stop_music"}
-        # publish using helper made available by BasePlugin
-        self.mqtt_publish(self.T_CMD, json.dumps(cmd))
-        return 0
-
-    def _render_telem(self, _):
-        """Render the cached telemetry dict as a grouped table.
-
-        This is driven by the same periodic tick as the other render to
-        avoid mixing UI updates across different timers.
-        """
-        telem = self.cache.get("cj_telem")
-        if not telem:
-            return html.Div("telemetry: —")
-        
-        try:
-            # Group telemetry by category (parse keys like "category/key")
-            categories = {}
-            other_items = {}
-            
-            for k in sorted(telem.keys()):
-                v = telem[k]
-                # Convert complex values to formatted strings
-                if isinstance(v, (dict, list)):
-                    display_value = json.dumps(v, indent=2, sort_keys=True)
-                else:
-                    display_value = str(v)
-                
-                # Try to split by "/" to get category
-                if "/" in k:
-                    category, subkey = k.split("/", 1)
-                    if category not in categories:
-                        categories[category] = []
-                    categories[category].append((subkey, display_value))
-                else:
-                    other_items[k] = display_value
-            
-            # Build single table with rowspan for category labels
-            rows = []
-            
-            # Add categorized items
-            for category in sorted(categories.keys()):
-                items = categories[category]
-                for i, (key, value) in enumerate(items):
-                    if i == 0:
-                        rows.append(html.Tr([
-                            html.Td(html.Strong(f"{category.capitalize()}:"), rowSpan=len(items), className="align-top", style={"width": "1%", "whiteSpace": "nowrap"}),
-                            html.Td(key, style={"width": "1%", "whiteSpace": "nowrap"}),
-                            html.Td(value if not isinstance(telem.get(f"{category}/{key}"), (dict, list)) else html.Pre(value, style={"whiteSpace": "pre-wrap", "margin": 0}))
-                        ]))
-                    else:
-                        rows.append(html.Tr([
-                            html.Td(key, style={"width": "1%", "whiteSpace": "nowrap"}),
-                            html.Td(value if not isinstance(telem.get(f"{category}/{key}"), (dict, list)) else html.Pre(value, style={"whiteSpace": "pre-wrap", "margin": 0}))
-                        ]))
-            
-            # Add uncategorized items
-            if other_items:
-                items = list(other_items.items())
-                for i, (key, value) in enumerate(items):
-                    if i == 0:
-                        rows.append(html.Tr([
-                            html.Td(html.Strong("Other:"), rowSpan=len(items), className="align-top", style={"width": "1%", "whiteSpace": "nowrap"}),
-                            html.Td(key, style={"width": "1%", "whiteSpace": "nowrap"}),
-                            html.Td(value if not isinstance(telem.get(key), (dict, list)) else html.Pre(value, style={"whiteSpace": "pre-wrap", "margin": 0}))
-                        ]))
-                    else:
-                        rows.append(html.Tr([
-                            html.Td(key, style={"width": "1%", "whiteSpace": "nowrap"}),
-                            html.Td(value if not isinstance(telem.get(key), (dict, list)) else html.Pre(value, style={"whiteSpace": "pre-wrap", "margin": 0}))
-                        ]))
-            
-            if not rows:
-                return html.Div("telemetry: —")
-            
-            return html.Table(className="table table-sm mb-0", style={"tableLayout": "auto"}, children=[html.Tbody(rows)])
-            
-        except Exception:
-            # Fallback to simple display if anything fails
-            return html.Div(f"telemetry: {str(telem)}")
+        return [
+            self.row("Action",
+                     self.button("Trigger", self.cid("trigger"), with_volume("trigger"), "danger",
+                                 confirm=True, state=volume),
+                     self.button("Stop Action", self.cid("stop-action"), {"action": "stop_action"}),
+                     self.button("Block", self.cid("block"), {"action": "block"}, "warning"),
+                     self.button("Unblock", self.cid("unblock"), {"action": "unblock"}),
+                     self.button("Reset", self.cid("reset"), with_volume("reset"), state=volume)),
+            self.row("Music",
+                     self.button("Play", self.cid("play"), with_volume("play_music"), state=volume),
+                     self.button("Stop playing", self.cid("stop"), {"action": "stop_music"}),
+                     self.volume_slider(self.cid("volume"), with_volume("set_volume"),
+                                        min=0, max=30, step=1, value=20)),
+        ]

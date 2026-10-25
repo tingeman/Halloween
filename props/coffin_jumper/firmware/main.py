@@ -48,6 +48,11 @@ MAX_RECONNECT_INTERVAL = 5 * 60 * 1000  # 5 minutes max backoff (given in ms)
 ACTION_FOLDER = 0
 ACTION_TRACK = 1
 
+# ---- Volume ----
+DEFAULT_VOLUME = 20      # DFPlayer volume at boot (0-30); the global limit scales this
+MAX_VOLUME = 30
+VOLUME_LIMIT_FILE = "volume_limit.json"   # last global limit, so it survives reboots offline
+
 PIR_LOCKOUT_MS = 5000    # Minimum ms between triggers (sensor-level default)
 PIR_DEBOUNCE_MS= 300     # Debounce time for PIR edges (minimum time between edges)
 PIR_WARMUP_MS  = 5000    # Ignore PIR edges for this long after boot
@@ -85,6 +90,7 @@ T_TEL   = BASE + b"/telemetry"
 T_CMD   = BASE + b"/cmd"
 T_LOG   = BASE + b"/log"
 T_BROKER_UP = b"halloween/broker/uptime"
+T_VOL_LIMIT = b"halloween/broadcast/volume_limit"   # retained, JSON {"scale": 0..1}
 
 # ---- Timezone (adjust when DST changes) ----
 TZ_OFFSET_HOURS = 2     # Denmark: 1 (CET winter), 2 (CEST summer)
@@ -187,7 +193,8 @@ class CoffinProp:
         self.state = "booting"
         self.is_blocked = False
         self.triggers = 0
-        self.volume = 20
+        self.volume = DEFAULT_VOLUME          # requested volume; plays at min(volume, cap)
+        self.volume_limit = self._load_volume_limit()
         self.broker_uptime_str = "—"
         self._last_action_start_ms = None
         self.wdt = None
@@ -351,7 +358,7 @@ class CoffinProp:
         # DFPlayer
         try:
             self.dfp = dfplayer.DFPlayer(uart_id=UART_NUM, tx_pin_id=UART_TX, rx_pin_id=UART_RX)
-            self.dfp.volume(self.volume)
+            self.dfp.volume(self.effective_volume())
             print("DFPlayer: Initialized")
         except Exception as e:
             print("DFPlayer: Failed to initialize:", e)
@@ -384,6 +391,7 @@ class CoffinProp:
             self.mqtt.connect()
             self.mqtt.subscribe(T_CMD)
             self.mqtt.subscribe(T_BROKER_UP)
+            self.mqtt.subscribe(T_VOL_LIMIT)
             self._birth()
             self.set_state("armed" if not self.is_blocked else "blocked")
             print("MQTT: Connected and configured")
@@ -577,6 +585,8 @@ class CoffinProp:
             "relay_pin_state": "---",
             "blocked": self.is_blocked,
             "vol": self.volume,
+            "vol_effective": self.effective_volume(),
+            "vol_limit": "off" if self.volume_limit >= 1.0 else "{}%".format(round(self.volume_limit * 100)),
             "rssi": None,
             "reset_cause": self.reset_cause,
             "loop_errors": self._consecutive_errors,
@@ -614,6 +624,27 @@ class CoffinProp:
             self._on_cmd(msg)
         elif t == T_BROKER_UP.decode():
             self._on_broker_uptime(msg)
+        elif t == T_VOL_LIMIT.decode():
+            self._on_volume_limit(msg)
+
+    def _on_volume_limit(self, msg: bytes):
+        """Apply the global volume limit (same semantics as halloween_common.volume_limit)."""
+        scale = 1.0
+        try:
+            obj = json.loads(msg.decode())
+            scale = float(obj.get("scale", 1.0) if isinstance(obj, dict) else obj)
+        except Exception:
+            print("Bad volume limit payload:", msg)
+        scale = min(max(scale, 0.0), 1.0)
+        if scale != self.volume_limit:
+            self.volume_limit = scale
+            self._save_volume_limit()
+        print("Volume limit:", scale)
+        if self.dfp:
+            try:
+                self.dfp.volume(self.effective_volume())
+            except Exception as e:
+                print("Error applying volume limit:", e)
 
     def _on_broker_uptime(self, msg: bytes):
         """Handle incoming broker uptime messages."""
@@ -701,13 +732,36 @@ class CoffinProp:
     # ----------------------------
     # DFPlayer Methods
     # ----------------------------
+    def volume_cap(self) -> int:
+        """Highest allowed volume: no limit at 100%, else limit * DEFAULT_VOLUME."""
+        if self.volume_limit >= 1.0:
+            return MAX_VOLUME
+        return int(round(DEFAULT_VOLUME * self.volume_limit))
+
+    def effective_volume(self) -> int:
+        return min(self.volume, self.volume_cap())
+
+    def _load_volume_limit(self) -> float:
+        try:
+            with open(VOLUME_LIMIT_FILE) as f:
+                return min(max(float(json.loads(f.read()).get("scale", 1.0)), 0.0), 1.0)
+        except Exception:
+            return 1.0
+
+    def _save_volume_limit(self):
+        try:
+            with open(VOLUME_LIMIT_FILE, "w") as f:
+                f.write(json.dumps({"scale": self.volume_limit}))
+        except Exception as e:
+            print("Could not save volume limit:", e)
+
     def set_volume(self, vol: int):
-        """Set the DFPlayer volume with bounds checking."""
+        """Set the requested DFPlayer volume (0-30); plays at most volume_cap()."""
         if not self.dfp: return
         try:
-            if 0 <= vol <= 30:
+            if 0 <= vol <= MAX_VOLUME:
                 self.volume = vol
-                self.dfp.volume(self.volume)
+                self.dfp.volume(self.effective_volume())
             else:
                 print("Volume out of range (0-30):", vol)
         except Exception as e:

@@ -9,12 +9,14 @@ services:
       - ../../config/secrets/mqtt_users.env
       - ../../config/dashboard.env
     environment:
-      # ensure the installed/copied plugin_base package is on PYTHONPATH
-      - PYTHONPATH=/opt/libs/py:/opt/plugin_base
+      # /opt makes `plugin_base` resolve to the package copied to /opt/plugin_base
+      - PYTHONPATH=/opt/libs/py:/opt
       - DASHBOARD_DEBUG=1
     volumes:
       - ../../props:/opt/props:ro
       - ../../libs/py:/opt/libs/py:ro
+      # media folder, for the Jarvis soundtrack (JARVIS_SOUNDTRACK)
+      - ../../media:/opt/media:ro
     ports:
       - "8050:8050"
     restart: unless-stopped

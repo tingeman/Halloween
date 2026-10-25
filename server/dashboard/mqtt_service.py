@@ -3,6 +3,7 @@ import os
 import json
 import ssl
 import threading
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
@@ -117,6 +118,8 @@ class MQTTService:
 
         # Subscriptions: filter -> list[callback]
         self._subs: Dict[str, List[OnMessage]] = defaultdict(list)
+        # topic -> time of the last non-retained ("live") message
+        self._live: Dict[str, float] = {}
 
         self._lock = threading.RLock()
         self._connected_evt = threading.Event()
@@ -174,6 +177,12 @@ class MQTTService:
                     if self._connected_evt.is_set():
                         self._client.unsubscribe(topic_filter)
 
+    def last_live(self, prefix: str) -> Optional[float]:
+        """Time of the newest non-retained message on a topic starting with `prefix`."""
+        with self._lock:
+            times = [t for topic, t in self._live.items() if topic.startswith(prefix)]
+        return max(times) if times else None
+
     def publish(self, topic: str, payload: bytes | str, qos: int = 0, retain: bool = False):
         self._client.publish(topic, payload=payload, qos=qos, retain=retain)
 
@@ -210,6 +219,9 @@ class MQTTService:
 
         to_call: List[OnMessage] = []
         with self._lock:
+            # commands are what we (or others) send, not a sign of life from the prop
+            if not msg.retain and not msg.topic.endswith("/cmd"):
+                self._live[msg.topic] = time.time()
             for f, handlers in self._subs.items():
                 if _topic_matches(f, msg.topic):
                     to_call.extend(handlers)

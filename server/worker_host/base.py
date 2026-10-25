@@ -5,6 +5,8 @@ from typing import Any, Callable, Optional, Protocol, Iterable, Union
 import inspect
 from pydantic import BaseModel
 
+from halloween_common import volume_limit
+
 @dataclass
 class MqttMessage:
     topic: str
@@ -25,16 +27,24 @@ class BaseWorker:
     Status:        halloween/<prop_id>/status/<key>
     State:         halloween/<prop_id>/state
     Availability:  halloween/<prop_id>/availability
+    Broadcast:     halloween/broadcast/<key>  (all workers; see on_broadcast)
+
+    Volume limit:  the retained halloween/broadcast/volume_limit message sets
+                   self.volume_scale and is applied to every object returned by
+                   volume_targets() (anything with set_volume_limit(scale)).
+                   Workers call apply_volume_limit() after (re)creating them.
     """
     def __init__(self, prop_id: str, mqtt: MqttClientProto, config: Union[dict[str, Any], BaseModel, None] = None):
         self.prop_id = prop_id
         self.mqtt = mqtt
         self.config = config or {}
         self._tasks: list[asyncio.Task] = []
+        self.volume_scale = volume_limit.NO_LIMIT
 
     # --- Lifecycle ---
     async def start(self) -> None:
         self.mqtt.subscribe(f"halloween/{self.prop_id}/cmd", qos=1)
+        self.mqtt.subscribe(volume_limit.TOPIC, qos=1)
         # Publish a simple availability LWT topic (no 'status' segment) so the
         # dashboard and other consumers can subscribe to `halloween/<prop_id>/availability`.
         self.mqtt.publish(f"halloween/{self.prop_id}/availability", "online", qos=1, retain=True)
@@ -50,6 +60,9 @@ class BaseWorker:
 
     # --- Message dispatch (parse action from payload) ---
     async def on_message(self, msg: MqttMessage) -> None:
+        if msg.topic.startswith("halloween/broadcast/"):
+            await self.on_broadcast(msg)
+            return
         if msg.topic != f"halloween/{self.prop_id}/cmd":
             return
         action, arg = self._parse_cmd_payload(msg.payload)
@@ -80,6 +93,26 @@ class BaseWorker:
                 self.publish_status("error", f"{type(e).__name__}: {e}")
         else:
             self.publish_status("warn", f"Unknown action: {action}")
+
+    # --- Broadcasts (same for every worker) ---
+    async def on_broadcast(self, msg: MqttMessage) -> None:
+        if msg.topic == volume_limit.TOPIC:
+            self.volume_scale = volume_limit.parse(msg.payload)
+            await asyncio.to_thread(self.apply_volume_limit)
+
+    def volume_targets(self) -> list:
+        """Objects the volume limit applies to (override, e.g. [self.group])."""
+        return []
+
+    def apply_volume_limit(self) -> None:
+        """Push self.volume_scale to every volume target. Safe to call any time."""
+        for target in self.volume_targets():
+            if target is not None and hasattr(target, "set_volume_limit"):
+                try:
+                    target.set_volume_limit(self.volume_scale)
+                except Exception as e:
+                    print(f"[{self.prop_id}] applying volume limit failed: {type(e).__name__}: {e}", flush=True)
+        self.telemetry("volume/Limit", volume_limit.label(self.volume_scale), retain=True)
 
     # --- Helpers for workers ---
     def spawn(self, coro) -> None:

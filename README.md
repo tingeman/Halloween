@@ -139,6 +139,54 @@ docker compose -f infra/compose/docker-compose.yml `
   -f infra/compose/docker-compose.dashboard.yml logs dashboard
 ```
 
+#### Classic and Jarvis views
+
+Two views of the same plugins run side by side:
+
+- Classic: **<http://localhost:8050/classic/>**
+- Jarvis (HUD style): **<http://localhost:8050/jarvis/>**
+
+`http://localhost:8050/` opens the one named by `DASHBOARD_DEFAULT_VIEW`
+(`classic` by default). Switch with **Jarvis view** in the classic navbar and
+**Classic view** in the Jarvis header (or press `C`). Both views send the same
+MQTT commands.
+
+Jarvis layouts, switchable live with the header buttons or keys `1`-`5`
+(remembered per browser; `?layout=kiosk` in the URL overrides):
+
+- **Grid**: all prop panes as equal tiles on one screen.
+- **Grid 2**: the systems rail plus every prop as a full-height column.
+- **Focus**: one large pane, the others stacked compactly on the right
+  (telemetry hidden). Click `⤢` on a pane to focus it.
+- **Ops**: a command rail with systems online, per-prop status and a comms log
+  of every command on the bus, plus the panes in a two-column board.
+- **Kiosk**: status only, no buttons, large type, for a wall screen.
+
+The ⚙ menu toggles per-prop accent colours and the soundtrack (`M`); the ♫ button
+(or `R`) restarts the track, which otherwise plays once per page load. Settings
+are in `config/dashboard.env` (`JARVIS_DEFAULT_LAYOUT`, `JARVIS_ACCENTS`,
+`JARVIS_SOUNDTRACK`, `JARVIS_SOUNDTRACK_VOLUME`, `PROP_STALE_AFTER`). The
+soundtrack is a file you put in `media/` (served by the dashboard at
+`/media/<file>`); browsers may block sound until the first click or key press,
+in which case it starts then.
+
+#### Global controls (both views)
+
+- **Vol limit**: caps every prop's speakers at that percentage of their own
+  default volume (100% = no limit). Stored as a retained MQTT message, so it
+  holds across triggers and restarts of the broker, workers and ESP32.
+- **All stop**: click twice within 3 s; sends each prop's stop commands.
+- **Confirm buttons**: Open/Close Trunk, Resync Tesla and the Coffin Trigger
+  also need a second click within 3 s.
+- A prop that claims online but sends nothing live for `PROP_STALE_AFTER`
+  seconds is shown as **stale**.
+
+Code: views in `server/dashboard/app.py` and `server/dashboard/jarvis/`;
+the shared prop card in `server/dashboard/plugin_base/prop_plugin.py`
+(see the dashboard README); the volume limit in
+`libs/py/halloween_common/volume_limit.py`. Roadmap:
+[docs/dashboard-roadmap.md](docs/dashboard-roadmap.md).
+
 ## 📁 Project Structure
 
 ```text

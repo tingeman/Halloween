@@ -30,6 +30,7 @@ class PluginDesc:
     layout: Callable[[], Any]
     register: Callable[[Any, Dict[str, Any]], None]
     zone: str  # "card" | "topbar"
+    instance: Any = None  # Plugin instance (class plugins) or the module
 
 
 def _load_module_from_path(name: str, file_path: str):
@@ -74,7 +75,7 @@ def _validate_plugin(module, origin: Path) -> Tuple[PluginDesc | None, List[str]
     if errors:
         return None, errors
 
-    return PluginDesc(name=name, layout=layout, register=register, zone=zone), []
+    return PluginDesc(name=name, layout=layout, register=register, zone=zone, instance=getattr(module, "instance", module)), []
 
 
 def _try_load_one(module_name: str, file_path: Path) -> PluginDesc | None:
@@ -111,6 +112,7 @@ def _try_load_one(module_name: str, file_path: Path) -> PluginDesc | None:
         # allow both register or register_callbacks method names
         ns.register_callbacks = getattr(inst, "register", getattr(inst, "register_callbacks", getattr(m, "register_callbacks", None)))
         ns.zone = getattr(inst, "zone", getattr(m, "zone", "card"))
+        ns.instance = inst
 
         plugin_target = ns
 
@@ -171,7 +173,7 @@ def discover_plugins(props_root: str, builtins_root: str) -> List[Dict]:
             continue
         desc = _try_load_one(f"builtin_{plugin_name}", f)
         if desc:
-            plugins.append({"name": desc.name, "layout": desc.layout, "register": desc.register, "zone": desc.zone})
+            plugins.append({"name": desc.name, "layout": desc.layout, "register": desc.register, "zone": desc.zone, "instance": desc.instance})
 
     # Prop plugins
     for page in sorted(Path(props_root).glob("*/plugin/page.py")):
@@ -182,7 +184,7 @@ def discover_plugins(props_root: str, builtins_root: str) -> List[Dict]:
         mod_name = f"plugin_{prop_name}"
         desc = _try_load_one(mod_name, page)
         if desc:
-            plugins.append({"name": desc.name, "layout": desc.layout, "register": desc.register, "zone": desc.zone})
+            plugins.append({"name": desc.name, "layout": desc.layout, "register": desc.register, "zone": desc.zone, "instance": desc.instance})
 
     if not plugins:
         print("[plugin_loader] No plugins found. Expected /app/builtin_plugins/*.py or /opt/props/*/plugin/page.py")

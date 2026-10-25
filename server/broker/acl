@@ -9,8 +9,10 @@ topic read halloween/+/state/#
 topic read halloween/+/telemetry/#
 topic read halloween/broadcast/#
 topic read halloween/broker/uptime
+topic read halloween/+/cmd
 pattern write halloween/+/cmd
 topic write halloween/ui/#
+topic write halloween/broadcast/volume_limit
 # (add or remove writes as your dashboard needs)
 
 # --- Worker host (often needs broad RW to orchestrate props) ---
@@ -25,3 +27,4 @@ topic read halloween/broadcast/#
 user device
 pattern readwrite halloween/%c/#
 topic read halloween/broker/uptime
+topic read halloween/broadcast/#
