@@ -694,3 +694,28 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 }
 .jv-sound-btn:hover { border-color: var(--jv-line-strong); box-shadow: 0 0 10px rgba(var(--jv-glow-rgb), .4); }
 .jv-layout-kiosk .jv-sound-btn { opacity: .35; }
+
+/* ================================================ TOP BAR + STATUS BAR
+   The top bar holds only the global controls in every layout (right
+   aligned, so they do not move when the view changes). Grid and Kiosk,
+   which have no systems rail, add a status bar underneath it. */
+.jv-layout-grid, .jv-layout-kiosk { grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "top" "status" "main" "foot"; }
+.jv-header .jv-controls { margin-left: auto; }
+.jv-statusbar {
+  grid-area: status; display: flex; align-items: center; gap: 14px; min-width: 0;
+  padding: 3px 12px; border: 1px solid var(--jv-line);
+  background: linear-gradient(90deg, rgba(var(--jv-glow-rgb), 0.07), transparent 60%);
+}
+.jv-statusbar .jv-reactor { width: 28px; height: 28px; }
+.jv-statusbar .jv-title { font-size: .95rem; letter-spacing: .26em; }
+.jv-statusbar .jv-subtitle { display: none; }
+.jv-statusbar .jv-systems { flex: 1 1 auto; }
+.jv-layout-ops .jv-statusbar, .jv-layout-focus .jv-statusbar, .jv-layout-grid2 .jv-statusbar { display: none; }
+.jv-layout-kiosk .jv-statusbar .jv-title { font-size: 1.3rem; }
+.jv-layout-kiosk .jv-statusbar .jv-chip { font-size: .85rem; padding: 4px 12px; }
+@media (max-width: 900px) {
+  .jv-layout-grid, .jv-layout-kiosk { grid-template-areas: "top" "status" "main" "foot"; grid-template-rows: auto; }
+}
+/* Same top bar height in every layout (the rail would otherwise stretch it) */
+.jv-header { align-self: start; box-sizing: border-box; height: 42px; flex-wrap: nowrap; }
+@media (max-width: 900px) { .jv-header { height: auto; flex-wrap: wrap; } }

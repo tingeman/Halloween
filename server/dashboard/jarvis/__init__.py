@@ -215,11 +215,16 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Div("Keys: 1-5 layout · [ ] previous/next prop · C classic · M sound on/off · R restart track", className="jv-muted"),
     ])
 
-    # Slim top bar: global inputs and view controls. The brand and status
-    # chips only show in layouts without the systems rail (grid, kiosk).
+    # Status bar under the top bar, only in layouts without the systems rail
+    # (grid, kiosk): brand and one status chip per system.
+    statusbar = html.Div(className="jv-statusbar", children=[
+        html.Div(className="jv-brand", children=[_reactor(), _brand()]),
+        html.Div(id="jv-systems", className="jv-systems"),
+    ])
+
+    # Slim top bar: global inputs and view controls, identical in every layout
+    # so they stay put when the view changes.
     header = html.Header(className="jv-header", children=[
-        html.Div(className="jv-brand jv-head-only", children=[_reactor(), _brand()]),
-        html.Div(id="jv-systems", className="jv-systems jv-head-only"),
         html.Div(className="jv-controls", children=[
             html.Div(className="jv-topbar", children=[p["layout"]() for p in topbar]),
             # Restarts the soundtrack from the beginning (handled in jarvis.js, key R)
@@ -285,6 +290,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Div(className="jv-bg"),
             rail,
             header,
+            statusbar,
             settings_panel,
             html.Main(className="jv-main", children=[
                 html.Div(className="jv-panes", children=panes or [
