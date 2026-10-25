@@ -15,6 +15,7 @@ comms log.
 Environment (all optional):
   JARVIS_DEFAULT_LAYOUT  grid | focus | ops | kiosk (or 1-4); used until the
                          browser has picked one. ?layout=<name> in the URL wins.
+  JARVIS_THEME           blue (default) or flame; also switchable in the settings menu.
   JARVIS_ACCENTS         1 to start with per-prop accent colours on (toggle in
                          the settings menu).
   JARVIS_SOUNDTRACK      file name in the media folder (MEDIA_DIR) or an http(s)
@@ -204,6 +205,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
                 html.Button("✕", id="jv-settings-close", n_clicks=0, className="jv-settings-close",
                             title="Close (Esc)"),
             ]),
+            html.Button("Theme", id="jv-set-theme", n_clicks=0, className="jv-toggle theme",
+                        title="Blue or flame colour scheme"),
             html.Button("Prop accent colours", id="jv-set-accents", n_clicks=0, className="jv-toggle"),
             html.Button("Soundtrack", id="jv-set-sound", n_clicks=0, className="jv-toggle",
                         disabled=not soundtrack,
@@ -258,6 +261,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
 
     defaults = {
         "layout": _default_layout(),
+        "theme": "flame" if os.getenv("JARVIS_THEME", "blue").strip().lower() == "flame" else "blue",
         "accents": _env_flag("JARVIS_ACCENTS"),
         "sound": bool(soundtrack),
         "classicUrl": classic_url,
@@ -265,7 +269,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
 
     app.layout = html.Div(
         id="jv-root",
-        className=f"jv jv-layout-{defaults['layout']}",
+        className=f"jv jv-layout-{defaults['layout']}" + (" jv-theme-flame" if defaults["theme"] == "flame" else ""),
         **{"data-bs-theme": "dark"},
         style={"--jv-n": n, "--jv-cols": cols, "--jv-side": max(n - 1, 1)},
         children=[
@@ -305,7 +309,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
     mqtt.subscribe(volume_limit.TOPIC, _on_limit)
 
     # --- Layout, settings and soundtrack (clientside, persisted locally) ------
-    toggles = ["jv-set-accents", "jv-set-sound"]
+    toggles = ["jv-set-theme", "jv-set-accents", "jv-set-sound"]
     app.clientside_callback(
         ClientsideFunction("jarvis", "updatePrefs"),
         Output("jv-prefs", "data"),

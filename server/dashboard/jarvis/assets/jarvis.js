@@ -69,6 +69,8 @@
         } else if (id && (id.type === "jv-focus" || id.type === "jv-focus-row")) {
           stored.focus = id.index;
           stored.layout = "focus";
+        } else if (id === "jv-set-theme") {
+          stored.theme = current.theme === "flame" ? "blue" : "flame";
         } else if (id === "jv-set-accents") {
           stored.accents = !current.accents;
         } else if (id === "jv-set-sound") {
@@ -97,9 +99,8 @@
         const layoutButtons = LAYOUTS.map(function (l) {
           return l === prefs.layout ? "jv-switch-btn active" : "jv-switch-btn";
         });
-        const toggles = [prefs.accents, prefs.sound].map(function (on) {
-          return on ? "jv-toggle on" : "jv-toggle";
-        });
+        const toggles = ["jv-toggle theme" + (prefs.theme === "flame" ? " flame" : "")].concat(
+          [prefs.accents, prefs.sound].map(function (on) { return on ? "jv-toggle on" : "jv-toggle"; }));
         const rows = (ctx.outputs_list[ctx.outputs_list.length - 1] || []).map(function (_, i) {
           return i === focus ? "jv-proprow is-focus" : "jv-proprow";
         });
@@ -110,7 +111,8 @@
         lastLayout = prefs.layout;
         syncSound(prefs, layoutChanged);
 
-        const root = "jv jv-layout-" + prefs.layout + (prefs.accents ? " jv-accents" : "");
+        const root = "jv jv-layout-" + prefs.layout + (prefs.accents ? " jv-accents" : "") +
+          (prefs.theme === "flame" ? " jv-theme-flame" : "");
         return [root, paneClasses].concat(layoutButtons, toggles, [rows]);
       },
 
