@@ -151,10 +151,11 @@ Two views of the same plugins run side by side:
 **Classic view** in the Jarvis header (or press `C`). Both views send the same
 MQTT commands.
 
-Jarvis layouts, switchable live with the header buttons or keys `1`-`4`
+Jarvis layouts, switchable live with the header buttons or keys `1`-`5`
 (remembered per browser; `?layout=kiosk` in the URL overrides):
 
 - **Grid**: all prop panes as equal tiles on one screen.
+- **Grid 2**: the systems rail plus every prop as a full-height column.
 - **Focus**: one large pane, the others stacked compactly on the right
   (telemetry hidden). Click `⤢` on a pane to focus it.
 - **Ops**: a command rail with systems online, per-prop status and a comms log

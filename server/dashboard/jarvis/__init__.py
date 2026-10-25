@@ -13,7 +13,7 @@ command topics and the global volume limit for the systems overview and the
 comms log.
 
 Environment (all optional):
-  JARVIS_DEFAULT_LAYOUT  grid | focus | ops | kiosk (or 1-4); used until the
+  JARVIS_DEFAULT_LAYOUT  grid | grid2 | focus | ops | kiosk (or 1-5); used until the
                          browser has picked one. ?layout=<name> in the URL wins.
   JARVIS_THEME           blue (default) or flame; also switchable in the settings menu.
   JARVIS_ACCENTS         1 to start with per-prop accent colours on (toggle in
@@ -44,6 +44,7 @@ URL_BASE = "/jarvis/"
 MEDIA_URL = "/media/"
 LAYOUTS = [
     ("grid", "Grid", "All panes as equal tiles"),
+    ("grid2", "Grid 2", "Systems rail plus every prop as a full-height column"),
     ("focus", "Focus", "One large pane, the rest in a side stack"),
     ("ops", "Ops", "Command rail with systems and comms log"),
     ("kiosk", "Kiosk", "Status only, no buttons, for a wall screen"),
@@ -211,7 +212,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Button("Soundtrack", id="jv-set-sound", n_clicks=0, className="jv-toggle",
                         disabled=not soundtrack,
                         title=None if soundtrack else "Set JARVIS_SOUNDTRACK to enable"),
-            html.Div("Keys: 1-4 layout · [ ] previous/next prop · C classic · M sound", className="jv-muted"),
+            html.Div("Keys: 1-5 layout · [ ] previous/next prop · C classic · M sound", className="jv-muted"),
     ])
 
     # Slim top bar: global inputs and view controls. The brand and status
@@ -290,7 +291,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Footer(className="jv-footer", children=[
                 html.Span("COMMS", className="jv-footer-tag"),
                 html.Div(id="jv-ticker", className="jv-ticker"),
-                html.Span("1-4 layout   C classic   M sound", className="jv-keys"),
+                html.Span("1-5 layout   C classic   M sound", className="jv-keys"),
             ]),
         ],
     )

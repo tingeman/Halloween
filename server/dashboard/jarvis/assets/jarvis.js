@@ -1,6 +1,6 @@
 // Clientside callbacks, soundtrack and keyboard shortcuts for the Jarvis dashboard.
 (function () {
-  const LAYOUTS = ["grid", "focus", "ops", "kiosk"];
+  const LAYOUTS = ["grid", "grid2", "focus", "ops", "kiosk"];
   const urlLayout = new URLSearchParams(window.location.search).get("layout");
   let overrideLayout = LAYOUTS.includes(urlLayout) ? urlLayout : null;  // ?layout= wins until a click
   let lastLayout = null;
@@ -169,7 +169,7 @@
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const tag = (ev.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select" || ev.target.isContentEditable) return;
-    const idx = ["1", "2", "3", "4"].indexOf(ev.key);
+    const idx = ["1", "2", "3", "4", "5"].indexOf(ev.key);
     const click = function (id) { const el = document.getElementById(id); if (el && !el.disabled) el.click(); };
     if (idx >= 0) {
       click("jv-l-" + LAYOUTS[idx]);
