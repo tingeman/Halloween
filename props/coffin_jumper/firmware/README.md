@@ -26,6 +26,8 @@ publishes commands. The prop is therefore independent of `worker_host` and
 | DFPlayer UART (UART 2) | TX GPIO 17, RX GPIO 16 | 9600 baud; ESP32 TX -> DFPlayer RX |
 | OLED SSD1306 (I2C) | SDA GPIO 21, SCL GPIO 22 | 128x64, address 0x3C |
 
+Full wiring, parts list and schematic: [../hardware/WIRING.md](../hardware/WIRING.md).
+
 Constants are at the top of [main.py](main.py): pins, OLED size, timings and
 the timezone offset (`TZ_OFFSET_HOURS`; adjust for DST).
 
