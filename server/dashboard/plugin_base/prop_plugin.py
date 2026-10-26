@@ -122,12 +122,23 @@ class PropPlugin(CommandUI, BasePlugin):
                          self.button("Toggle Disco", self.cid("hue-disco"), hue("disco")),
                          self.button("(Re)Connect", self.cid("hue-connect"), hue("connect")))]
 
-    def state_buttons(self, pause=False):
+    # The same four controls on every prop:
+    #   Arm     ready for a (motion) trigger
+    #   Trigger start a play by hand (resumes when paused)
+    #   Pause   hold the running action
+    #   Stop    leave the armed state (also what All stop sends by default)
+    # Pass command overrides for props whose payloads differ (e.g. the coffin).
+    def state_buttons(self, arm="arm", trigger="play", pause="pause", stop="stop",
+                      trigger_state=(), confirm_trigger=False):
         return self.row(None,
-                        self.button("Arm", self.cid("arm"), "arm", "primary"),
-                        self.button("Play", self.cid("play"), "play", "success"),
-                        *([self.button("Pause", self.cid("pause"), "pause", "warning")] if pause else []),
-                        self.button("Stop", self.cid("stop"), "stop", "danger"))
+                        self.button("Arm", self.cid("arm"), arm, "primary",
+                                    title="Arm: ready for a trigger"),
+                        self.button("Trigger", self.cid("play"), trigger, "success", confirm=confirm_trigger,
+                                    state=trigger_state, title="Start a play by hand (resumes when paused)"),
+                        self.button("Pause", self.cid("pause"), pause, "warning",
+                                    title="Hold the running action"),
+                        self.button("Stop", self.cid("stop"), stop, "danger",
+                                    title="Stop and leave the armed state"))
 
     # --- layout ----------------------------------------------------------------
     def layout(self):

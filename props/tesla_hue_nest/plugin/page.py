@@ -19,7 +19,7 @@ class Plugin(PropPlugin):
     def controls(self):
         tesla = lambda args: {"action": "tesla", "args": args}  # noqa: E731
         return [
-            self.state_buttons(pause=True),   # pause freezes the music; trunk and lights stay
+            self.state_buttons(),   # pause freezes the music; trunk and lights stay
             # These move the car, so they ask for a second click
             self.row("Tesla",
                      self.button("Open Trunk", self.cid("tesla-open-trunk"), tesla("open_trunk"), confirm=True),

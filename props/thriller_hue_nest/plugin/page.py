@@ -18,7 +18,7 @@ class Plugin(PropPlugin):
 
     def controls(self):
         return [
-            self.state_buttons(pause=True),   # pause freezes the music; trunk and lights stay
+            self.state_buttons(),   # pause freezes the music; trunk and lights stay
             *self.hue_controls(),
             *self.nest_controls(),
         ]

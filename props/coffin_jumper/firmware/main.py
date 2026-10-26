@@ -191,7 +191,9 @@ class CoffinProp:
         
         # State
         self.state = "booting"
-        self.is_blocked = False
+        self.is_blocked = False   # safety lock: no physical action from any source
+        self.is_armed = True      # armed: motion (PIR) triggers the action
+        self.is_paused = False    # a running action is paused (music held, solenoid off)
         self.triggers = 0
         self.volume = DEFAULT_VOLUME          # requested volume; plays at min(volume, cap)
         self.volume_limit = self._load_volume_limit()
@@ -393,7 +395,7 @@ class CoffinProp:
             self.mqtt.subscribe(T_BROKER_UP)
             self.mqtt.subscribe(T_VOL_LIMIT)
             self._birth()
-            self.set_state("armed" if not self.is_blocked else "blocked")
+            self.set_state(self._rest_state())
             print("MQTT: Connected and configured")
             self._mqtt_reconnect_attempts = 0  # Reset on success
         except Exception as e:
@@ -406,6 +408,12 @@ class CoffinProp:
     # ----------------------------
     # Core Logic & State
     # ----------------------------
+    def _rest_state(self) -> str:
+        """State when no action runs: blocked > armed > stopped."""
+        if self.is_blocked:
+            return "blocked"
+        return "armed" if self.is_armed else "stopped"
+
     def set_state(self, new_state: str):
         """Update the local state and publish it via MQTT if connected."""
         self.state = new_state
@@ -438,7 +446,7 @@ class CoffinProp:
         if self.dfp:
             self.dfp.stop()
 
-        self.set_state("armed" if not self.is_blocked else "blocked")
+        self.set_state(self._rest_state())
         print("ACTION: Stopped and state reset.")
 
     def _check_action_status(self):
@@ -501,6 +509,10 @@ class CoffinProp:
             return False
 
         if self.is_blocked:
+            return False
+
+        # Motion only counts while armed and not paused; a manual Trigger always may
+        if source == "pir" and (not self.is_armed or self.is_paused):
             return False
 
         # Accept trigger
@@ -584,6 +596,8 @@ class CoffinProp:
             "relay": "---",
             "relay_pin_state": "---",
             "blocked": self.is_blocked,
+            "armed": self.is_armed,
+            "paused": self.is_paused,
             "vol": self.volume,
             "vol_effective": self.effective_volume(),
             "vol_limit": "off" if self.volume_limit >= 1.0 else "{}%".format(round(self.volume_limit * 100)),
@@ -685,29 +699,61 @@ class CoffinProp:
 
         print("Command action:", action)
 
+        # Same four controls as the other props: arm / trigger / pause / stop.
+        # block / unblock is an extra safety lock on top (see README).
         if action == "block":
             # Block first so _stop_action publishes "blocked", not a brief "armed"
             self.is_blocked = True
+            self.is_paused = False
             self._stop_action()
             self.set_state("blocked")
         elif action == "unblock":
             self.is_blocked = False
-            self.set_state("armed")
+            self.set_state(self._rest_state())
         elif action == "reset":
             self.triggers = 0
             self.is_blocked = False
+            self.is_armed = True
+            self.is_paused = False
             self.set_state("armed")
         elif action == "arm":
-            if not self.is_blocked:
-                self.set_state("armed")
+            self.is_armed = True
+            if self.is_paused:                    # arming ends a paused action
+                self.is_paused = False
+                self._stop_action()
+            elif self.state not in ("action", "playing"):
+                self.set_state(self._rest_state())
+        elif action == "stop":
+            # Disarm: end anything running and ignore motion until armed again
+            self.is_armed = False
+            self.is_paused = False
+            self._stop_action()
+        elif action == "pause":
+            if self.state in ("action", "playing") and not self.is_paused:
+                self.is_paused = True
+                self._paused_from = self.state
+                if self.solenoid_pin:
+                    self.solenoid_pin.value(0)
+                self.pause()
+                self.set_state("paused")
         elif action == "trigger":
-            now = time.ticks_ms()
-            accepted = self.request_trigger(now=now, source="mqtt")
-            if not accepted:
-                print("Remote trigger rejected (blocked/lockout/state).")
+            if self.is_paused:                    # Trigger resumes a paused action
+                if not self.is_blocked:
+                    self.is_paused = False
+                    self.resume()
+                    if getattr(self, "_paused_from", "action") == "action":
+                        self._last_action_start_ms = time.ticks_ms()   # failsafe counts from resume
+                        self.set_state("action")
+            else:
+                now = time.ticks_ms()
+                accepted = self.request_trigger(now=now, source="mqtt")
+                if not accepted:
+                    print("Remote trigger rejected (blocked/lockout/state).")
         elif action == "stop_action":
             if self.state == "action":
                 self._stop_action()
+        elif action == "play_music" and self.is_blocked:
+            print("Play rejected: blocked")
         elif action == "play_music":
             vol = params.get("volume")
             if vol is not None:
@@ -808,7 +854,7 @@ class CoffinProp:
         if not self.dfp: return
         try:
             self.dfp.stop()
-            self.set_state("armed" if not self.is_blocked else "blocked")
+            self.set_state(self._rest_state())
         except Exception as e:
             print("Error stopping track:", e)
 
@@ -873,7 +919,7 @@ class CoffinProp:
 
         # 4. Connect to MQTT if online
         self._init_mqtt()
-        self.set_state("armed" if not self.is_blocked else "blocked")
+        self.set_state(self._rest_state())
 
         # 5. Main loop, guarded: one bad iteration is logged, not fatal
         self._last_tel = 0

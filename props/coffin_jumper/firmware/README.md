@@ -225,3 +225,19 @@ Tips:
 - Remove a file: `mpremote connect COM8 fs rm main.py`.
 - `python main.py` on a desktop only runs small helper self-checks (`wrap`,
   `draw_center`, `_publish`); it does not touch hardware.
+
+## Controls and states (2026)
+
+Same four controls as the other props, plus a safety lock:
+
+| Command | Effect | State |
+|---------|--------|-------|
+| `arm` | Motion (PIR) triggers the action again; ends a paused action | `armed` |
+| `trigger` | Fire the action by hand (also when stopped); resumes a paused action | `action` |
+| `pause` | Hold a running action: solenoid off, music paused, motion ignored | `paused` |
+| `stop` | Disarm: end the action and music, ignore motion until `arm` | `stopped` |
+| `block` | Safety lock: nothing moves or plays from any source (motion, trigger, music) | `blocked` |
+| `unblock` | Lift the lock, back to `armed` or `stopped` | |
+| `reset` | Clear the trigger count, unblock and arm | `armed` |
+
+The dashboard's All stop sends `stop` (and `stop_music`). The board boots armed.

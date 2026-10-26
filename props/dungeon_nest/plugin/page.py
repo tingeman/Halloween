@@ -16,6 +16,6 @@ class Plugin(PropPlugin):
 
     def controls(self):
         return [
-            self.state_buttons(pause=True),
+            self.state_buttons(),
             *self.nest_controls(),
         ]
