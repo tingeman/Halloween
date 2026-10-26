@@ -14,7 +14,8 @@ class Plugin(PropPlugin):
     PROP_ID = "esp32-coffin-jumper-01"
     PREFIX = "cj"
     ACCENT = "#ffb547"
-    STOP_COMMANDS = [{"action": "stop_action"}, {"action": "stop_music"}]
+    # All stop disarms it like the other props; "block" also ends a running action
+    STOP_COMMANDS = [{"action": "block"}, {"action": "stop_music"}]
 
     @property
     def T_TELEMETRY(self):
@@ -35,14 +36,19 @@ class Plugin(PropPlugin):
                 return cmd
             return build
 
+        # Arm/Disarm map to the firmware's unblock/block, like Arm/Stop on the other props
         return [
-            self.row("Action",
+            self.row(None,
+                     self.button("Arm", self.cid("unblock"), {"action": "unblock"}, "primary",
+                                 title="React to motion and triggers again (unblock)"),
+                     self.button("Disarm", self.cid("block"), {"action": "block"}, "warning",
+                                 title="Ignore motion and triggers; ends a running action (block)"),
                      self.button("Trigger", self.cid("trigger"), with_volume("trigger"), "danger",
                                  confirm=True, state=volume),
-                     self.button("Stop Action", self.cid("stop-action"), {"action": "stop_action"}),
-                     self.button("Block", self.cid("block"), {"action": "block"}, "warning"),
-                     self.button("Unblock", self.cid("unblock"), {"action": "unblock"}),
-                     self.button("Reset", self.cid("reset"), with_volume("reset"), state=volume)),
+                     self.button("Stop Action", self.cid("stop-action"), {"action": "stop_action"})),
+            self.row("Prop",
+                     self.button("Reset", self.cid("reset"), with_volume("reset"), state=volume,
+                                 title="Clear the trigger count and arm")),
             self.row("Music",
                      self.button("Play", self.cid("play"), with_volume("play_music"), state=volume),
                      self.button("Stop playing", self.cid("stop"), {"action": "stop_music"}),

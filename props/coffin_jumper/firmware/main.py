@@ -686,8 +686,9 @@ class CoffinProp:
         print("Command action:", action)
 
         if action == "block":
-            self._stop_action()
+            # Block first so _stop_action publishes "blocked", not a brief "armed"
             self.is_blocked = True
+            self._stop_action()
             self.set_state("blocked")
         elif action == "unblock":
             self.is_blocked = False
