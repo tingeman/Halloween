@@ -734,13 +734,13 @@ class Worker(BaseWorker):
         # Mark that the state's on_enter() needs to run in the sync thread
         self._state_needs_enter = True
 
-        self.publish_state(state_name)
+        self.publish_state(state_name, retain=True)  # retained: dashboards opened later see it
 
     def restore_state(self, state_obj):
         """Return to an existing state instance without on_enter (resume after pause)."""
         self.current_state = state_obj
         self._state_needs_enter = False
-        self.publish_state(state_obj.__class__.__name__.replace("State", "").lower())
+        self.publish_state(state_obj.__class__.__name__.replace("State", "").lower(), retain=True)
 
 
     # --- NEW: Async Command Bridge ---
@@ -783,7 +783,7 @@ class Worker(BaseWorker):
         except Exception as e:
             print(f"FATAL: ERROR initializing integrations: {e}")
             # Publish an error state so the dashboard can reflect initialization failure
-            self.publish_state("error", qos=1)
+            self.publish_state("error", qos=1, retain=True)
             # Do not start the poll loop if init fails
             return False
         return True
