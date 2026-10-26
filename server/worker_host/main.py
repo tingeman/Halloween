@@ -112,7 +112,20 @@ async def run():
             await asyncio.sleep(10)
     hb_task = asyncio.create_task(heartbeat())
 
-    # Dispatcher
+    # Dispatcher: one queue and consumer per worker, so a slow handler in one
+    # prop (speaker or car I/O) never holds up commands for the others.
+    # Each worker still gets its own messages in order.
+    worker_queues: Dict[str, asyncio.Queue] = {pid: asyncio.Queue() for pid in instances}
+
+    async def consume(prop_id: str, w: BaseWorker):
+        q = worker_queues[prop_id]
+        while True:
+            msg = await q.get()
+            try:
+                await w.on_message(msg)
+            except Exception as e:
+                print(f"[worker_host] {prop_id} on_message failed: {type(e).__name__}: {e}", flush=True)
+
     async def dispatcher():
         while True:
             msg = await msg_queue.get()
@@ -121,12 +134,11 @@ async def run():
                 prop_id = parts[1]
                 if prop_id == "broadcast":
                     # Broadcasts (e.g. the global volume limit) go to every worker
-                    for w in list(instances.values()):
-                        await w.on_message(msg)
-                    continue
-                w = instances.get(prop_id)
-                if w:
-                    await w.on_message(msg)
+                    for q in worker_queues.values():
+                        q.put_nowait(msg)
+                elif prop_id in worker_queues:
+                    worker_queues[prop_id].put_nowait(msg)
+    consumer_tasks = [asyncio.create_task(consume(pid, w)) for pid, w in instances.items()]
     disp_task = asyncio.create_task(dispatcher())
 
     # Graceful shutdown
@@ -137,6 +149,8 @@ async def run():
 
     hb_task.cancel()
     disp_task.cancel()
+    for t in consumer_tasks:
+        t.cancel()
     for w in instances.values():
         try:
             await w.stop()

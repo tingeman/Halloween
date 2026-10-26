@@ -115,6 +115,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
     systems = {}                    # prop id -> {"avail", "state", "changed"}
     lock = threading.Lock()         # MQTT thread writes, Dash threads read
     started = time.time()
+    blocked_props = {}               # prop id -> safety block on (halloween/<id>/state/blocked)
 
     def _log(kind, prop, text):
         with lock:
@@ -321,6 +322,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
 
     mqtt.subscribe("halloween/+/availability", _on_status("avail", "avail"))
     mqtt.subscribe("halloween/+/state", _on_status("state", "state"))
+    mqtt.subscribe("halloween/+/state/blocked", lambda t, p: blocked_props.__setitem__(
+        t.split("/")[1], p.decode("utf-8", "replace").strip().lower() in ("1", "true", "on", "blocked")))
     mqtt.subscribe("halloween/+/cmd", _on_cmd)          # needs the dashboard ACL read on cmd
     mqtt.subscribe(volume_limit.TOPIC, _on_limit)
 
@@ -364,6 +367,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
         state = sys_["state"].lower()
         if avail in ("offline", "false", "down") or state in ("error", "fault", "io error"):
             return "bad"
+        if state == "blocked" or blocked_props.get(prop):
+            return "lock"       # online, but its safety block is on
         if avail in ("online", "true", "up"):
             last = mqtt.last_live(f"halloween/{prop}/") if hasattr(mqtt, "last_live") else None
             return "stale" if time.time() - max(last or 0, started) > STALE_AFTER else "ok"
@@ -413,7 +418,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
 
         for prop, sys_ in items:
             lvl = levels[prop]
-            shown = "stale" if lvl == "stale" else sys_["state"]
+            shown = "stale" if lvl == "stale" else ("blocked" if lvl == "lock" else sys_["state"])
             chips.append(html.Div(className=f"jv-chip {lvl}", title=f"{prop}: {sys_['avail']} / {sys_['state']}", children=[
                 html.Span(className="jv-dot"),
                 html.Span(_label(prop), className="jv-chip-name"),
@@ -429,7 +434,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
                 ]),
                 html.Span(_fmt_ts(sys_["changed"]) if sys_["changed"] else "", className="jv-sysrow-ts"),
             ]))
-        online = sum(1 for lvl in levels.values() if lvl == "ok")
+        online = sum(1 for lvl in levels.values() if lvl in ("ok", "lock"))
         if not items:
             chips = [html.Div("Waiting for systems…", className="jv-chip idle")]
         if not rows:

@@ -38,9 +38,14 @@ class Plugin(CommandUI, BasePlugin):
                         title="Stop every prop (asks for a second click)"),
         ])
 
-    @staticmethod
-    def _limit_payload(percent):
-        return volume_limit.encode(float(percent) / 100.0)
+    def _limit_payload(self, percent):
+        scale = float(percent) / 100.0
+        # The slider is also moved to mirror the broker (page load, other
+        # browsers); only publish real changes, every publish makes each
+        # worker re-apply the limit to its speakers.
+        if abs(scale - self.cache.get("global_volume_limit", volume_limit.NO_LIMIT)) < 1e-6:
+            return None
+        return volume_limit.encode(scale)
 
     def _all_stop(self):
         for p in self._services.get("plugins", []):

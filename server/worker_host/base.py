@@ -28,6 +28,7 @@ class BaseWorker:
     State:         halloween/<prop_id>/state
     Availability:  halloween/<prop_id>/availability
     Broadcast:     halloween/broadcast/<key>  (all workers; see on_broadcast)
+    Block flag:    halloween/<prop_id>/state/blocked  ("1"/"0", retained; do_block / do_unblock)
 
     Volume limit:  the retained halloween/broadcast/volume_limit message sets
                    self.volume_scale and is applied to every object returned by
@@ -40,11 +41,15 @@ class BaseWorker:
         self.config = config or {}
         self._tasks: list[asyncio.Task] = []
         self.volume_scale = volume_limit.NO_LIMIT
+        # Safety block (see do_block): what it blocks is up to each worker
+        self.blocked = False
 
     # --- Lifecycle ---
     async def start(self) -> None:
         self.mqtt.subscribe(f"halloween/{self.prop_id}/cmd", qos=1)
         self.mqtt.subscribe(volume_limit.TOPIC, qos=1)
+        # Retained block flag, so a block survives worker restarts
+        self.mqtt.subscribe(self._t_blocked, qos=1)
         # Publish a simple availability LWT topic (no 'status' segment) so the
         # dashboard and other consumers can subscribe to `halloween/<prop_id>/availability`.
         self.mqtt.publish(f"halloween/{self.prop_id}/availability", "online", qos=1, retain=True)
@@ -62,6 +67,9 @@ class BaseWorker:
     async def on_message(self, msg: MqttMessage) -> None:
         if msg.topic.startswith("halloween/broadcast/"):
             await self.on_broadcast(msg)
+            return
+        if msg.topic == self._t_blocked:
+            self.blocked = msg.payload.decode("utf-8", "replace").strip().lower() in ("1", "true", "on", "blocked")
             return
         if msg.topic != f"halloween/{self.prop_id}/cmd":
             return
@@ -94,10 +102,28 @@ class BaseWorker:
         else:
             self.publish_status("warn", f"Unknown action: {action}")
 
+    # --- Safety block (same for every worker) ---
+    @property
+    def _t_blocked(self) -> str:
+        return f"halloween/{self.prop_id}/state/blocked"
+
+    async def do_block(self, arg) -> None:
+        """Set the retained safety block; workers check self.blocked before risky actions."""
+        self.blocked = True
+        self.mqtt.publish(self._t_blocked, "1", qos=1, retain=True)
+
+    async def do_unblock(self, arg) -> None:
+        self.blocked = False
+        self.mqtt.publish(self._t_blocked, "0", qos=1, retain=True)
+
     # --- Broadcasts (same for every worker) ---
     async def on_broadcast(self, msg: MqttMessage) -> None:
         if msg.topic == volume_limit.TOPIC:
-            self.volume_scale = volume_limit.parse(msg.payload)
+            scale = volume_limit.parse(msg.payload)
+            if getattr(self, "_volume_limit_seen", False) and scale == self.volume_scale:
+                return  # repeat of the current limit: nothing to do
+            self._volume_limit_seen = True
+            self.volume_scale = scale
             await asyncio.to_thread(self.apply_volume_limit)
 
     def volume_targets(self) -> list:

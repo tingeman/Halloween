@@ -240,4 +240,5 @@ Same four controls as the other props, plus a safety lock:
 | `unblock` | Lift the lock, back to `armed` or `stopped` | |
 | `reset` | Clear the trigger count, unblock and arm | `armed` |
 
-The dashboard's All stop sends `stop` (and `stop_music`). The board boots armed.
+The dashboard's All stop sends `stop` (and `stop_music`). The board boots armed, unless it was
+blocked: the block is stored in `blocked.json` on the board and survives reboots.

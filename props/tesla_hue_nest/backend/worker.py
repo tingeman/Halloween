@@ -357,7 +357,9 @@ class PlayingState(State):
             except Exception:
                 pass
 
-        if context.config.USE_TESLA and context.tesla_car is not None:
+        if context.blocked:
+            print("Trunk blocked: show runs without opening the trunk.")
+        elif context.config.USE_TESLA and context.tesla_car is not None:
             try:
                 context.tesla_car.open_trunk()
             except Exception:
@@ -1165,7 +1167,11 @@ class Worker(BaseWorker):
             action = arg.lower()
             match action:
                 case 'open_trunk':
-                    await asyncio.to_thread(self.tesla_car.open_trunk)
+                    if self.blocked:   # safety block: the trunk stays shut
+                        print("Open trunk refused: Tesla is blocked.")
+                        self.publish_status("warn", "Open trunk refused: blocked")
+                    else:
+                        await asyncio.to_thread(self.tesla_car.open_trunk)
                 case 'close_trunk':
                     await asyncio.to_thread(self.tesla_car.close_trunk, trunk_check=True)
                 case 'resync':

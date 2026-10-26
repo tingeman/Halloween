@@ -145,3 +145,32 @@ def test_firmware_volume_limit(tmp_path, monkeypatch):
     assert sent[-1] == 4
     assert json.loads((tmp_path / "volume_limit.json").read_text())["scale"] == 0.3
     assert fw.CoffinProp().volume_limit == 0.3       # survives a "reboot"
+
+
+def test_base_worker_block_flag_is_retained_and_restored():
+    from worker_host.base import BaseWorker, MqttMessage
+
+    mqtt = FakeMqtt()
+    w = BaseWorker("p", mqtt)
+    asyncio.run(w.start())
+    assert "halloween/p/state/blocked" in mqtt.subscribed
+    asyncio.run(w.on_message(MqttMessage("halloween/p/cmd", b"block", 1, False)))
+    assert w.blocked and ("halloween/p/state/blocked", "1", True) in mqtt.published
+    w2 = BaseWorker("p", FakeMqtt())          # restart: retained flag comes back
+    asyncio.run(w2.on_message(MqttMessage("halloween/p/state/blocked", b"1", 1, True)))
+    assert w2.blocked
+
+
+def test_repeated_volume_limit_is_not_reapplied():
+    from worker_host.base import BaseWorker, MqttMessage
+
+    applied = []
+
+    class W(BaseWorker):
+        def volume_targets(self):
+            return [types.SimpleNamespace(set_volume_limit=applied.append)]
+
+    w = W("p", FakeMqtt())
+    for _ in range(3):
+        asyncio.run(w.on_message(MqttMessage(volume_limit.TOPIC, b'{"scale":0.25}', 1, True)))
+    assert applied == [0.25]

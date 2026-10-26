@@ -52,6 +52,7 @@ ACTION_TRACK = 1
 DEFAULT_VOLUME = 20      # DFPlayer volume at boot (0-30); the global limit scales this
 MAX_VOLUME = 30
 VOLUME_LIMIT_FILE = "volume_limit.json"   # last global limit, so it survives reboots offline
+BLOCK_FILE = "blocked.json"              # safety block, so it survives reboots
 
 PIR_LOCKOUT_MS = 5000    # Minimum ms between triggers (sensor-level default)
 PIR_DEBOUNCE_MS= 300     # Debounce time for PIR edges (minimum time between edges)
@@ -191,7 +192,7 @@ class CoffinProp:
         
         # State
         self.state = "booting"
-        self.is_blocked = False   # safety lock: no physical action from any source
+        self.is_blocked = self._load_blocked()   # safety lock: no physical action from any source
         self.is_armed = True      # armed: motion (PIR) triggers the action
         self.is_paused = False    # a running action is paused (music held, solenoid off)
         self.triggers = 0
@@ -704,15 +705,18 @@ class CoffinProp:
         if action == "block":
             # Block first so _stop_action publishes "blocked", not a brief "armed"
             self.is_blocked = True
+            self._save_blocked()
             self.is_paused = False
             self._stop_action()
             self.set_state("blocked")
         elif action == "unblock":
             self.is_blocked = False
+            self._save_blocked()
             self.set_state(self._rest_state())
         elif action == "reset":
             self.triggers = 0
             self.is_blocked = False
+            self._save_blocked()
             self.is_armed = True
             self.is_paused = False
             self.set_state("armed")
@@ -794,6 +798,20 @@ class CoffinProp:
                 return min(max(float(json.loads(f.read()).get("scale", 1.0)), 0.0), 1.0)
         except Exception:
             return 1.0
+
+    def _load_blocked(self) -> bool:
+        try:
+            with open(BLOCK_FILE) as f:
+                return bool(json.loads(f.read()).get("blocked", False))
+        except Exception:
+            return False
+
+    def _save_blocked(self):
+        try:
+            with open(BLOCK_FILE, "w") as f:
+                f.write(json.dumps({"blocked": self.is_blocked}))
+        except Exception as e:
+            print("Could not save block state:", e)
 
     def _save_volume_limit(self):
         try:

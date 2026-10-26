@@ -70,3 +70,11 @@ def test_arm_ends_a_paused_action(prop):
     prop.cmd("pause")
     prop.cmd("arm")
     assert prop.state == "armed" and not prop.is_paused
+
+
+def test_block_survives_a_reboot(prop):
+    prop.cmd("block")
+    again = type(prop)()                      # new instance = reboot, same flash (cwd)
+    assert again.is_blocked is True and again._rest_state() == "blocked"
+    prop.cmd("unblock")
+    assert type(prop)().is_blocked is False

@@ -26,6 +26,7 @@ class Plugin(PropPlugin):
                      self.button("Close Trunk", self.cid("tesla-close-trunk"), tesla("close_trunk"), confirm=True),
                      self.button("Resync Tesla", self.cid("tesla-resync"), tesla("resync"), confirm=True,
                                  title="Re-read the real trunk state from the car (may lock the doors)")),
+            *self.safety_controls("Keep the trunk shut: the show still runs, but nothing opens it"),
             *self.hue_controls(),
             *self.nest_controls(),
         ]

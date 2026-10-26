@@ -57,7 +57,7 @@ class PropPlugin(CommandUI, BasePlugin):
         "armed": "success", "waiting": "success", "idle": "success", "ready": "success",
         "playing": "info", "arming": "info", "action": "primary", "jumping": "primary",
         "paused": "warning", "stopped": "warning", "cooldown": "warning", "fadeout": "warning",
-        "blocked": "warning",
+        "blocked": "danger",
         "error": "danger", "fault": "danger", "io error": "danger",
     }
 
@@ -116,6 +116,12 @@ class PropPlugin(CommandUI, BasePlugin):
         ]
         return rows
 
+    def safety_controls(self, title="Safety block: refuse the risky actions until Unblock"):
+        """Block / Unblock for workers that honour BaseWorker.blocked (survives restarts)."""
+        return [self.row("Safety",
+                         self.button("Block", self.cid("block"), "block", "danger", title=title),
+                         self.button("Unblock", self.cid("unblock"), "unblock", title="Lift the safety block"))]
+
     def hue_controls(self):
         hue = lambda args: {"action": "hue", "args": args}  # noqa: E731
         return [self.row("Hue",
@@ -148,6 +154,7 @@ class PropPlugin(CommandUI, BasePlugin):
                 self.name,
                 html.Span(id=self.cid("availability"), className="ms-2", children=[badge("unknown")]),
                 html.Span(id=self.cid("state"), className="ms-2", children=[badge("unknown")]),
+                html.Span(id=self.cid("blocked"), className="ms-2"),
             ]),
             # Controls and status side by side where there is room (Jarvis), stacked otherwise
             html.Div(className="hw-prop-body", children=[
@@ -163,6 +170,8 @@ class PropPlugin(CommandUI, BasePlugin):
         self._started = time.time()
         self.mqtt_subscribe(self.T_AVAIL, lambda t, p: self.cache.set(self._key("avail"), _text(p, "status")))
         self.mqtt_subscribe(self.T_STATE, lambda t, p: self.cache.set(self._key("state"), _text(p, "state")))
+        self.mqtt_subscribe(f"{self.T_BASE}/state/blocked", lambda t, p: self.cache.set(
+            self._key("blocked"), p.decode("utf-8", "replace").strip().lower() in ("1", "true", "on", "blocked")))
         self.mqtt_subscribe(self.T_TELEMETRY, self._on_telem)
 
         # One request per prop per tick: separate callbacks per badge starve the
@@ -171,10 +180,13 @@ class PropPlugin(CommandUI, BasePlugin):
             Output(self.cid("availability"), "children"),
             Output(self.cid("state"), "children"),
             Output(self.cid("telem"), "children"),
+            Output(self.cid("blocked"), "children"),
             Input(self._tick, "n_intervals"),
         )
         def _render(n):
-            return self._render_avail(n), self._render_state(n), self._render_telem(n)
+            blocked = html.Span("blocked", className="badge bg-danger text-white",
+                                title="Safety block is on") if self.cache.get(self._key("blocked")) else None
+            return self._render_avail(n), self._render_state(n), self._render_telem(n), blocked
         self.register_controls(app)
 
     def _on_telem(self, topic, payload: bytes):
