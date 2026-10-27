@@ -27,7 +27,7 @@ import json
 import os
 import time
 
-from dash import html, Input, Output
+from dash import html, dcc, Input, Output, State, no_update
 
 from .plugin_base import BasePlugin
 from .ui import CommandUI
@@ -161,6 +161,7 @@ class PropPlugin(CommandUI, BasePlugin):
                 html.Div(className="hw-prop-controls", children=self.controls()),
                 html.Div(className="hw-prop-status", children=[
                     html.Div(id=self.cid("telem"), className="small"),
+                    dcc.Store(id=self.cid("sig"), storage_type="memory"),
                 ]),
             ]),
         ])
@@ -174,19 +175,36 @@ class PropPlugin(CommandUI, BasePlugin):
             self._key("blocked"), p.decode("utf-8", "replace").strip().lower() in ("1", "true", "on", "blocked")))
         self.mqtt_subscribe(self.T_TELEMETRY, self._on_telem)
 
-        # One request per prop per tick: separate callbacks per badge starve the
-        # last props when the browser's request queue backs up.
+        # One request per prop per tick (separate callbacks per badge starve the
+        # last props when the browser's request queue backs up). Only what
+        # changed since this browser's last render is sent: re-sending the
+        # telemetry tables every second made the badges lag.
         @app.callback(
             Output(self.cid("availability"), "children"),
             Output(self.cid("state"), "children"),
-            Output(self.cid("telem"), "children"),
             Output(self.cid("blocked"), "children"),
+            Output(self.cid("telem"), "children"),
+            Output(self.cid("sig"), "data"),
             Input(self._tick, "n_intervals"),
+            State(self.cid("sig"), "data"),
         )
-        def _render(n):
-            blocked = html.Span("blocked", className="badge bg-danger text-white",
-                                title="Safety block is on") if self.cache.get(self._key("blocked")) else None
-            return self._render_avail(n), self._render_state(n), self._render_telem(n), blocked
+        def _render(n, last):
+            last = last or {}
+            badges = (self.cache.get(self._key("avail")), self.is_stale(),
+                      self.cache.get(self._key("state")), bool(self.cache.get(self._key("blocked"))))
+            telem = dict(self.cache.get(self._key("telem"), {}))
+            sig = {"badges": repr(badges), "telem": repr(sorted(telem.items(), key=lambda kv: kv[0]))}
+            if sig["badges"] == last.get("badges"):
+                avail = state = blocked = no_update
+            else:
+                avail, state = self._render_avail(n), self._render_state(n)
+                blocked = html.Span("blocked", className="badge bg-danger text-white",
+                                    title="Safety block is on") if badges[3] else None
+            telem_out = no_update if sig["telem"] == last.get("telem") else self._render_telem(n)
+            if avail is no_update and telem_out is no_update:
+                return no_update, no_update, no_update, no_update, no_update
+            return avail, state, blocked, telem_out, sig
+
         self.register_controls(app)
 
     def _on_telem(self, topic, payload: bytes):

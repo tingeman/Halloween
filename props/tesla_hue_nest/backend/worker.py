@@ -60,6 +60,16 @@ class ConfigModel(BaseSettings):
         return self
 
 
+# Published state names shared by every prop: WaitingState (ready for motion)
+# is reported as "armed", like the Dungeon and Coffin props.
+_PUBLIC_STATE_NAMES = {"waiting": "armed"}
+
+
+def _state_name(state_class) -> str:
+    name = state_class.__name__.replace("State", "").lower()
+    return _PUBLIC_STATE_NAMES.get(name, name)
+
+
 # ============================ STATE CLASSES ============================
 class State(ABC):
     """
@@ -748,7 +758,7 @@ class Worker(BaseWorker):
         if self.current_state and self.current_state.__class__ == new_state_class:
             return # Already in this state
 
-        state_name = new_state_class.__name__.replace("State", "").lower()
+        state_name = _state_name(new_state_class)
         print(f"Transitioning to state: {state_name}")
         
         # Create an instance of the new state, passing self as the context
@@ -762,7 +772,7 @@ class Worker(BaseWorker):
         """Return to an existing state instance without on_enter (resume after pause)."""
         self.current_state = state_obj
         self._state_needs_enter = False
-        self.publish_state(state_obj.__class__.__name__.replace("State", "").lower(), retain=True)
+        self.publish_state(_state_name(state_obj.__class__), retain=True)
 
 
     # --- NEW: Async Command Bridge ---
