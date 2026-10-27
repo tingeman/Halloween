@@ -9,6 +9,7 @@ topic read halloween/+/state/#
 topic read halloween/+/telemetry/#
 topic read halloween/broadcast/#
 topic read halloween/broker/uptime
+topic read halloween/+/uptime
 topic read halloween/+/cmd
 pattern write halloween/+/cmd
 topic write halloween/ui/#

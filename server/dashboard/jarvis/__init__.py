@@ -326,6 +326,10 @@ def create_app(server, mqtt, classic_url="/classic/"):
         t.split("/")[1], p.decode("utf-8", "replace").strip().lower() in ("1", "true", "on", "blocked")))
     mqtt.subscribe("halloween/+/cmd", _on_cmd)          # needs the dashboard ACL read on cmd
     mqtt.subscribe(volume_limit.TOPIC, _on_limit)
+    # Signs of life for the stale check (MQTTService.last_live) from systems
+    # without a prop card: the worker host uptime and any telemetry
+    for topic in ("halloween/+/uptime", "halloween/+/telemetry", "halloween/+/telemetry/#"):
+        mqtt.subscribe(topic, lambda t, p: None)
 
     # --- Layout, settings and soundtrack (clientside, persisted locally) ------
     toggles = ["jv-set-theme", "jv-set-accents", "jv-set-sound"]
