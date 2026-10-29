@@ -55,6 +55,7 @@ class PropPlugin(CommandUI, BasePlugin):
     ACCENT = None
     # Every prop answers each command that carries an id with {"id", "ok", "reason"} on <base>/ack
     ACKS = True  # set False for a prop that does not ack
+    ARM_COMMANDS = ["arm"]
     STOP_COMMANDS = ["stop"]
     TELEMETRY_ORDER = ("tesla", "hue", "speakers", "volume", "playback")
     STATE_COLORS = {

@@ -5,8 +5,8 @@ Global controls in the top bar of both dashboard views.
 - Volume limit: publishes the retained halloween/broadcast/volume_limit.
   Every prop caps its speakers at limit * its own default volume; 100% means
   no limit. The broker keeps the value across restarts.
-- All stop: after a confirming second click, sends each loaded prop plugin's
-  STOP_COMMANDS to its command topic.
+- All arm / All stop: send each loaded prop plugin's ARM_COMMANDS / STOP_COMMANDS
+  to its command topic. All stop asks for a confirming second click.
 """
 import json
 
@@ -34,9 +34,17 @@ class Plugin(CommandUI, BasePlugin):
                     label="", topic=self.T_LIMIT, retain=True)),
                 html.Span("off", id=f"{PREFIX}-volume-limit-label", className="hw-limit-label badge bg-secondary"),
             ]),
+            self.button("All arm", f"{PREFIX}-all-arm", self._all_arm, "primary",
+                        title="Arm every prop"),
             self.button("All stop", f"{PREFIX}-all-stop", self._all_stop, "danger", confirm=True,
                         title="Stop every prop (asks for a second click)"),
         ])
+
+    def _all_arm(self):
+        return self._send_all("ARM_COMMANDS")
+
+    def _all_stop(self):
+        return self._send_all("STOP_COMMANDS")
 
     def _limit_payload(self, percent):
         scale = float(percent) / 100.0
@@ -47,10 +55,10 @@ class Plugin(CommandUI, BasePlugin):
             return None
         return volume_limit.encode(scale)
 
-    def _all_stop(self):
+    def _send_all(self, attr):
         for p in self._services.get("plugins", []):
             inst = p.get("instance")
-            cmds = getattr(inst, "STOP_COMMANDS", None)
+            cmds = getattr(inst, attr, None)
             topic = getattr(inst, "T_CMD", None)
             if not cmds or not isinstance(topic, str):
                 continue

@@ -549,6 +549,7 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 .jv-layout-focus .jv-proprow.is-focus { border-right-color: var(--jv-cyan); }
 .jv-layout-focus .jv-proprow.is-focus .jv-sysrow { background: rgba(var(--jv-glow-rgb), 0.12); }
 .jv-log { font-size: .68rem; }
+.jv-rail-uptime { flex: 0 0 auto; padding-top: 8px; }
 
 /* ---- OPS: panes in a two-column board ---- */
 .jv-layout-ops .jv-panes {

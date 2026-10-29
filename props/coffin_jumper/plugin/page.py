@@ -17,6 +17,7 @@ class Plugin(PropPlugin):
     PREFIX = "cj"
     ACCENT = "#ffb547"
         # All stop disarms it like the other props: "stop" ends the action and music
+    ARM_COMMANDS = [{"action": "arm"}]
     STOP_COMMANDS = [{"action": "stop"}, {"action": "stop_music"}]
 
     @property
