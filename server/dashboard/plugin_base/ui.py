@@ -86,13 +86,31 @@ class CommandUI:
     def _send(self, spec, *values):
         command = spec["command"]
         payload = command(*values) if callable(command) else command
-        if payload is not None:
-            if spec.get("retain"):
-                self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1, retain=True)
-            else:
-                self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload))
+        if payload is None:
+            return
+        if spec.get("retain"):
+            self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1, retain=True)
+            return
+        if spec["topic"] is None and getattr(self, "ACKS", False):
+            payload = self._track_command({"action": payload} if isinstance(payload, str) else payload)
+        self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1)
 
     def _wire_button(self, app, cid, spec):
+        # Brief red flash in the browser: the press is visible before the command is sent
+        app.clientside_callback(
+            f"""function(n) {{
+                const el = document.getElementById({json.dumps(cid)});
+                if (n && el) {{
+                    el.classList.add("hw-sent");
+                    setTimeout(() => el.classList.remove("hw-sent"), 800);
+                }}
+                return window.dash_clientside.no_update;
+            }}""",
+            Output(cid, "className"),
+            Input(cid, "n_clicks"),
+            prevent_initial_call=True,
+        )
+
         @app.callback(
             Output(cid, "n_clicks"),
             Input(cid, "n_clicks"),

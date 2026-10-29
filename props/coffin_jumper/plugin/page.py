@@ -1,7 +1,7 @@
 """Coffin Jumper plugin (class-based)
 
 The ESP32 publishes one JSON telemetry object on <base>/telemetry and takes
-commands as {"action": ..., "params": {...}} on <base>/cmd. Volumes are the
+commands as {"action": ..., "args": {...}} on <base>/cmd. Volumes are the
 DFPlayer scale 0-30.
 """
 import json
@@ -16,7 +16,8 @@ class Plugin(PropPlugin):
     PROP_ID = "esp32-coffin-jumper-01"
     PREFIX = "cj"
     ACCENT = "#ffb547"
-    # All stop disarms it like the other props: "stop" ends the action and music
+        # All stop disarms it like the other props: "stop" ends the action and music
+    ARM_COMMANDS = [{"action": "arm"}]
     STOP_COMMANDS = [{"action": "stop"}, {"action": "stop_music"}]
 
     @property
@@ -34,9 +35,15 @@ class Plugin(PropPlugin):
             def build(vol):
                 cmd = {"action": action}
                 if vol is not None:
-                    cmd["params"] = {"volume": int(vol)}
+                    cmd["args"] = {"volume": int(vol)}
                 return cmd
             return build
+
+        def set_volume(vol):
+            # The slider is also moved to mirror the prop; only send real changes
+            if vol is None or vol == self.cache.get(self._key("telem"), {}).get("vol"):
+                return None
+            return {"action": "set_volume", "args": {"volume": int(vol)}}
 
         timing_inputs = [
             (self.cid("action-min-s"), "value"),
@@ -50,7 +57,7 @@ class Plugin(PropPlugin):
                 return None
             return {
                 "action": "set_action_timing",
-                "params": {
+                "args": {
                     "action_min_ms": int(round(float(minimum) * 1000)),
                     "action_max_ms": int(round(float(maximum) * 1000)),
                     "action_lockout_ms": int(round(float(lockout) * 1000)),
@@ -82,8 +89,9 @@ class Plugin(PropPlugin):
             self.row("Music",
                      self.button("Play", self.cid("music-play"), with_volume("play_music"), state=volume),
                      self.button("Stop", self.cid("music-stop"), {"action": "stop_music"}),
-                     self.volume_slider(self.cid("volume"), with_volume("set_volume"),
-                                        min=0, max=30, step=1, value=20)),
+                     self.volume_slider(self.cid("volume"), set_volume,
+                                        min=0, max=30, step=1, value=20),
+                     dcc.Store(id=self.cid("volume-seen"), storage_type="memory")),
             self.row("Action timing",
                      html.Label("Min on (s)"),
                      dcc.Input(id=self.cid("action-min-s"), type="number", min=0, max=600,
@@ -127,3 +135,19 @@ class Plugin(PropPlugin):
             values = [round(int(telemetry[key]) / 1000, 1) for key in keys]
             values.append(round(int(telemetry.get("solenoid_delay_ms", 0)) / 1000, 1))
             return tuple(values) + (True,)
+
+        # Follow the volume the prop reports (it resets on a restart); only act when
+        # the reported value changes, so a drag in progress is not overridden.
+        @app.callback(
+            Output(self.cid("volume"), "value"),
+            Output(self.cid("volume-seen"), "data"),
+            Input(self._tick, "n_intervals"),
+            State(self.cid("volume"), "value"),
+            State(self.cid("volume-seen"), "data"),
+            prevent_initial_call=True,
+        )
+        def sync_volume(_, current, seen):
+            reported = self.cache.get(self._key("telem"), {}).get("vol")
+            if not isinstance(reported, (int, float)) or reported == seen:
+                return no_update, no_update
+            return (no_update if reported == current else int(reported)), reported

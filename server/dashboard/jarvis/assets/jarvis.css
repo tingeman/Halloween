@@ -391,6 +391,13 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 .jv-logrow.vol .jv-log-kind, .jv-tick.vol { color: var(--jv-cyan-soft); }
 
 /* Confirm-before-send buttons (trunk, trigger, all stop) */
+.jv button.hw-sent {
+  --b: var(--jv-bad) !important;
+  color: #fff !important; background: var(--jv-bad) !important;
+  box-shadow: 0 0 18px rgba(255, 77, 109, 0.7) !important;
+  animation: jv-sent .18s steps(2) 4;
+}
+@keyframes jv-sent { 50% { background: #fff; color: var(--jv-bad); } }
 .jv button.hw-confirming {
   --b: var(--jv-warn) !important;
   color: #120800 !important; background: var(--jv-warn) !important;
@@ -436,6 +443,7 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   text-transform: uppercase; color: var(--b); background: color-mix(in srgb, var(--b) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--b) 60%, transparent);
 }
+.jv-topbar .hw-global button.btn-warning { --b: var(--jv-warn); }
 .jv-topbar .hw-global button:hover { background: color-mix(in srgb, var(--b) 30%, transparent); color: #fff; }
 .jv-pane .hw-row-label { min-width: 4.4em; }
 
@@ -549,6 +557,7 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 .jv-layout-focus .jv-proprow.is-focus { border-right-color: var(--jv-cyan); }
 .jv-layout-focus .jv-proprow.is-focus .jv-sysrow { background: rgba(var(--jv-glow-rgb), 0.12); }
 .jv-log { font-size: .68rem; }
+.jv-rail-uptime { flex: 0 0 auto; padding-top: 8px; }
 
 /* ---- OPS: panes in a two-column board ---- */
 .jv-layout-ops .jv-panes {

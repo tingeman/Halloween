@@ -39,7 +39,7 @@ class ConfigModel(BaseSettings):
     MOTION_SENSORS: List[str] = []
     CHROMECAST_DUNGEON_GROUP: List[ChromecastDevice]
     PLAY_DURATION: int = 300
-    AUTO_ARM: bool = True
+    AUTO_ARM: bool = False
     SENSOR_POLL_INTERVAL: float = 1.0
     TELEMETRY_INTERVAL: int = 10
     tick_interval: int = 5

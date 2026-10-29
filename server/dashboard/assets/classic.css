@@ -4,6 +4,11 @@
   animation: hw-confirm-pulse .6s ease-in-out infinite alternate;
 }
 @keyframes hw-confirm-pulse { to { filter: brightness(1.25); } }
+.hw-sent {
+  background: var(--bs-danger) !important; color: #fff !important; border-color: var(--bs-danger) !important;
+  animation: hw-sent-blink .18s steps(2) 4;
+}
+@keyframes hw-sent-blink { 50% { background: #fff !important; color: var(--bs-danger) !important; } }
 .hw-row-label { min-width: 4.5em; margin: 0; }
 .hw-slider { flex: 1 1 220px; }
 .hw-slider .dash-slider-container, .hw-slider > div { width: 100%; }

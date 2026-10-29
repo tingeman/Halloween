@@ -2,7 +2,7 @@
 
 # --- BEHAVIOR ---
 PLAY_DURATION: 300        # seconds the soundscape loops after the last motion (retrigger resets this)
-AUTO_ARM: true            # start armed (reacting to motion) when the worker starts
+AUTO_ARM: false           # true = start armed (reacting to motion); false = start stopped until armed
 SENSOR_POLL_INTERVAL: 1   # seconds between motion sensor polls
 TELEMETRY_INTERVAL: 10    # seconds between telemetry updates
 

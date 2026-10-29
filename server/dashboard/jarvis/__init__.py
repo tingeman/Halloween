@@ -155,7 +155,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
     )
     app.config.suppress_callback_exceptions = True
 
-    topbar = [p for p in plugins if p["zone"] == "topbar"]
+    topbar = [p for p in plugins if p["zone"] == "topbar" and p["name"] != "Broker Uptime"]
+    broker_uptime = [p for p in plugins if p["name"] == "Broker Uptime"]
     cards = [p for p in plugins if p["zone"] == "card"]
     n = max(len(cards), 1)
     cols = n if n <= 4 else math.ceil(n / 2)
@@ -272,6 +273,7 @@ def create_app(server, mqtt, classic_url="/classic/"):
         html.Div(id="jv-rail-systems", className="jv-rail-systems"),
         html.Div("Comms log", className="jv-rail-head"),
         html.Div(id="jv-log", className="jv-log"),
+        html.Div(className="jv-rail-uptime", children=[p["layout"]() for p in broker_uptime]),
     ])
 
     defaults = {
