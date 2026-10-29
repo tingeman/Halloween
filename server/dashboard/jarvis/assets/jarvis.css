@@ -395,8 +395,9 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   --b: var(--jv-bad) !important;
   color: #fff !important; background: var(--jv-bad) !important;
   box-shadow: 0 0 18px rgba(255, 77, 109, 0.7) !important;
-  animation: jv-blink .3s steps(2) 2;
+  animation: jv-sent .18s steps(2) 4;
 }
+@keyframes jv-sent { 50% { background: #fff; color: var(--jv-bad); } }
 .jv button.hw-confirming {
   --b: var(--jv-warn) !important;
   color: #120800 !important; background: var(--jv-warn) !important;

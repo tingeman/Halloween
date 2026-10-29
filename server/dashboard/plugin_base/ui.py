@@ -102,7 +102,7 @@ class CommandUI:
                 const el = document.getElementById({json.dumps(cid)});
                 if (n && el) {{
                     el.classList.add("hw-sent");
-                    setTimeout(() => el.classList.remove("hw-sent"), 700);
+                    setTimeout(() => el.classList.remove("hw-sent"), 800);
                 }}
                 return window.dash_clientside.no_update;
             }}""",
