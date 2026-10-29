@@ -58,9 +58,9 @@ class PropPlugin(CommandUI, BasePlugin):
     STOP_COMMANDS = ["stop"]
     TELEMETRY_ORDER = ("tesla", "hue", "speakers", "volume", "playback")
     STATE_COLORS = {
-        "armed": "success", "waiting": "success", "idle": "success", "ready": "success",
+        "armed": "orange", "waiting": "success", "idle": "success", "ready": "success",
         "playing": "info", "arming": "info", "action": "primary", "jumping": "primary",
-        "paused": "warning", "stopped": "warning", "cooldown": "warning", "fadeout": "warning",
+        "paused": "warning", "stopped": "success", "cooldown": "warning", "fadeout": "warning",
         "blocked": "danger",
         "error": "danger", "fault": "danger", "io error": "danger",
     }
@@ -280,6 +280,9 @@ class PropPlugin(CommandUI, BasePlugin):
     def _render_state(self, _):
         state = (self.cache.get(self._key("state")) or "unknown").lower()
         color = self.STATE_COLORS.get(state, "secondary")
+        if color == "orange":
+            return html.Span(state, className="badge text-dark",
+                             style={"backgroundColor": "#fd7e14"})
         text = "text-dark" if color == "warning" else "text-white"
         return html.Span(state, className=f"badge bg-{color} {text}")
 
