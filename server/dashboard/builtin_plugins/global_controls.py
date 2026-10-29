@@ -5,8 +5,9 @@ Global controls in the top bar of both dashboard views.
 - Volume limit: publishes the retained halloween/broadcast/volume_limit.
   Every prop caps its speakers at limit * its own default volume; 100% means
   no limit. The broker keeps the value across restarts.
-- All arm / All stop: after a confirming second click, send each loaded prop plugin's
-  ARM_COMMANDS / STOP_COMMANDS to its command topic.
+- All arm: after a confirming second click, sends each loaded prop plugin's
+  ARM_COMMANDS to its command topic.
+- All stop: sends STOP_COMMANDS immediately, with no confirmation.
 """
 import json
 
@@ -36,8 +37,8 @@ class Plugin(CommandUI, BasePlugin):
             ]),
             self.button("All arm", f"{PREFIX}-all-arm", self._all_arm, "warning", confirm=True,
                                     title="Arm every prop (asks for a second click)"),
-            self.button("All stop", f"{PREFIX}-all-stop", self._all_stop, "danger", confirm=True,
-                        title="Stop every prop (asks for a second click)"),
+            self.button("All stop", f"{PREFIX}-all-stop",             self._all_stop, "danger",
+                                    title="Stop every prop"),
         ])
 
     def _all_arm(self):
