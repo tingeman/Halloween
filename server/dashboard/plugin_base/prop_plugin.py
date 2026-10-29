@@ -54,7 +54,8 @@ class PropPlugin(CommandUI, BasePlugin):
     PREFIX = ""
     ACCENT = None
     # True for props that answer each command with {"id", "ok", "reason"} on <base>/ack
-    ACKS = False    STOP_COMMANDS = ["stop"]
+    ACKS = False
+    STOP_COMMANDS = ["stop"]
     TELEMETRY_ORDER = ("tesla", "hue", "speakers", "volume", "playback")
     STATE_COLORS = {
         "armed": "success", "waiting": "success", "idle": "success", "ready": "success",
