@@ -34,7 +34,7 @@ class Plugin(CommandUI, BasePlugin):
                     label="", topic=self.T_LIMIT, retain=True)),
                 html.Span("off", id=f"{PREFIX}-volume-limit-label", className="hw-limit-label badge bg-secondary"),
             ]),
-            self.button("All arm", f"{PREFIX}-all-arm", self._all_arm, "primary",
+            self.button("All arm", f"{PREFIX}-all-arm", self._all_arm, "warning",
                         title="Arm every prop"),
             self.button("All stop", f"{PREFIX}-all-stop", self._all_stop, "danger", confirm=True,
                         title="Stop every prop (asks for a second click)"),
