@@ -20,6 +20,7 @@ class ThreadedMqtt:
 
         self._handlers: List[Callable[[MqttMessage], None]] = []
         self._subs: dict[str, int] = {}
+        self._availability: dict[str, str | bytes] = {}
 
         self._client.on_message = self._on_message
         self._client.on_connect = self._on_connect
@@ -31,6 +32,8 @@ class ThreadedMqtt:
 
     # Public API for workers/host
     def publish(self, topic: str, payload: str | bytes, qos: int = 0, retain: bool = False) -> None:
+        if retain and topic.endswith("/availability"):
+            self._availability[topic] = payload
         self._client.publish(topic, payload=payload, qos=qos, retain=retain)
 
     def subscribe(self, topic: str, qos: int = 0) -> None:
@@ -55,8 +58,9 @@ class ThreadedMqtt:
         # clean_session=True: the broker forgets us on restart/reconnect, so redo subscriptions
         for topic, qos in list(self._subs.items()):
             client.subscribe(topic, qos=qos)
-        if self._connected_evt.is_set() and self.lwt_topic:
-            client.publish(self.lwt_topic, "online", qos=1, retain=True)
+        # A restarted broker may have lost retained messages (or restored stale ones)
+        for topic, payload in list(self._availability.items()):
+            client.publish(topic, payload, qos=1, retain=True)
         self._connected_evt.set()
 
     def _on_message(self, client, userdata, message):
