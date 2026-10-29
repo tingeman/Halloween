@@ -436,6 +436,7 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
   text-transform: uppercase; color: var(--b); background: color-mix(in srgb, var(--b) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--b) 60%, transparent);
 }
+.jv-topbar .hw-global button.btn-warning { --b: var(--jv-warn); }
 .jv-topbar .hw-global button:hover { background: color-mix(in srgb, var(--b) 30%, transparent); color: #fff; }
 .jv-pane .hw-row-label { min-width: 4.4em; }
 
