@@ -391,6 +391,12 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 .jv-logrow.vol .jv-log-kind, .jv-tick.vol { color: var(--jv-cyan-soft); }
 
 /* Confirm-before-send buttons (trunk, trigger, all stop) */
+.jv button.hw-sent {
+  --b: var(--jv-bad) !important;
+  color: #fff !important; background: var(--jv-bad) !important;
+  box-shadow: 0 0 18px rgba(255, 77, 109, 0.7) !important;
+  animation: jv-blink .3s steps(2) 2;
+}
 .jv button.hw-confirming {
   --b: var(--jv-warn) !important;
   color: #120800 !important; background: var(--jv-warn) !important;

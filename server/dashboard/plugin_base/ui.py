@@ -96,6 +96,21 @@ class CommandUI:
         self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1)
 
     def _wire_button(self, app, cid, spec):
+        # Brief red flash in the browser: the press is visible before the command is sent
+        app.clientside_callback(
+            f"""function(n) {{
+                const el = document.getElementById({json.dumps(cid)});
+                if (n && el) {{
+                    el.classList.add("hw-sent");
+                    setTimeout(() => el.classList.remove("hw-sent"), 700);
+                }}
+                return window.dash_clientside.no_update;
+            }}""",
+            Output(cid, "className"),
+            Input(cid, "n_clicks"),
+            prevent_initial_call=True,
+        )
+
         @app.callback(
             Output(cid, "n_clicks"),
             Input(cid, "n_clicks"),
