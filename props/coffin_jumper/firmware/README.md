@@ -266,5 +266,6 @@ Same four controls as the other props, plus a safety lock:
 | `unblock` | Lift the lock, back to `armed` or `stopped` | |
 | `reset` | Clear the trigger count, unblock and arm | `armed` |
 
-The dashboard's All stop sends `stop` (and `stop_music`). The board boots armed, unless it was
-blocked: the block is stored in `blocked.json` on the board and survives reboots.
+The dashboard's All stop sends `stop` (and `stop_music`). The board boots stopped (disarmed), so
+motion is ignored until it is armed from the dashboard. A block is stored in `blocked.json` on the
+board and survives reboots.

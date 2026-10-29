@@ -42,7 +42,7 @@ except Exception:
         secrets = None
 
 # ---- Constants ----
-FW_VERSION = "1.2.0"   # 1.2.0: command acks (<base>/ack), QoS 1 cmd, retained blocked flag
+FW_VERSION = "1.2.1"   # 1.2.1: boots stopped (disarmed); 1.2.0: command acks (<base>/ack), QoS 1 cmd, retained blocked flag
 TELEMETRY_INTERVAL_MS = 5000
 MAX_RECONNECT_INTERVAL = 5 * 60 * 1000  # 5 minutes max backoff (given in ms)
 ACTION_FOLDER = 0
@@ -200,7 +200,7 @@ class CoffinProp:
         # State
         self.state = "booting"
         self.is_blocked = self._load_blocked()   # safety lock: no physical action from any source
-        self.is_armed = True      # armed: motion (PIR) triggers the action
+        self.is_armed = False     # armed: motion (PIR) triggers the action; always starts stopped
         self.is_paused = False    # a running action is paused (music held, solenoid off)
         self.triggers = 0
         self._seen_cmd_ids = []

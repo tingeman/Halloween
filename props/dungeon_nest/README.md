@@ -5,7 +5,7 @@ drive motor, so only the sound is controlled.
 
 ## Behaviour
 States: `stopped` (ignores motion), `armed` (waiting for motion), `playing`, `paused`.
-`AUTO_ARM: true` starts the worker armed.
+`AUTO_ARM: true` starts the worker armed; the default is `false`, so it starts stopped until armed.
 
 - Motion on any of the Hue sensors (same sensors as `thriller_hue_nest`) while armed
   starts `media/Halloween2023 - dungeon soundscape.mp3` on the dungeon Nest speaker, looping.
