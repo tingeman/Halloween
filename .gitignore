@@ -212,3 +212,4 @@ config/secrets/**
 
 # Personal soundtrack files (copyrighted; keep them out of git)
 media/*Should I Stay or Should I Go*
+media/**
