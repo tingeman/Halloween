@@ -221,6 +221,7 @@ html, body { height: 100%; margin: 0; background: var(--jv-bg); }
 .jv .badge.bg-danger { color: var(--jv-bad) !important; box-shadow: 0 0 10px rgba(255, 77, 109, 0.35); }
 .jv .badge.bg-warning { color: var(--jv-warn) !important; }
 .jv .badge.bg-info, .jv .badge.bg-primary { color: var(--jv-info) !important; box-shadow: 0 0 10px rgba(var(--jv-glow-rgb), 0.3); }
+.jv .badge.bg-orange { color: #ff8a2b !important; box-shadow: 0 0 10px rgba(255, 138, 43, 0.3); }
 .jv .badge.bg-secondary { color: var(--jv-dim) !important; }
 
 .jv-pane-body > div > div { margin-bottom: 10px !important; }
