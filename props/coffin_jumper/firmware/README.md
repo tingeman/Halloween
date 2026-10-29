@@ -155,7 +155,8 @@ Commands may carry an `"id"`; the firmware then answers on `<base>/ack` with
 command the firmware publishes telemetry (so `vol` and the timing values are
 current) and the retained `<base>/state/blocked` flag (`1`/`0`). The dashboard
 slider follows the reported `vol`, and shows rejected/unanswered commands next
-to the badges. `params` is the native key; `args` is accepted as well.
+to the badges. `args` is the shared command key (same as the worker props);
+`params` is still accepted.
 
 Quick test (uses the broker container's admin credentials from its environment):
 

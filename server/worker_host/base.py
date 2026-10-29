@@ -43,6 +43,7 @@ class BaseWorker:
         self.volume_scale = volume_limit.NO_LIMIT
         # Safety block (see do_block): what it blocks is up to each worker
         self.blocked = False
+        self._seen_cmd_ids: list[str] = []
 
     # --- Lifecycle ---
     async def start(self) -> None:
@@ -74,9 +75,18 @@ class BaseWorker:
         if msg.topic != f"halloween/{self.prop_id}/cmd":
             return
         action, arg = self._parse_cmd_payload(msg.payload)
+        cmd_id = self._cmd_id(msg.payload)
+        if cmd_id is not None and cmd_id in self._seen_cmd_ids:
+            # QoS 1 can deliver a command twice: answer again, don't run it again
+            self._ack(cmd_id, action, True, "duplicate")
+            return
         if not action:
             self.publish_status("warn", "Empty/invalid command payload")
+            self._ack(cmd_id, action, False, "empty or invalid command")
             return
+        if cmd_id is not None:
+            self._seen_cmd_ids.append(cmd_id)
+            del self._seen_cmd_ids[:-20]
         handler_name = f"do_{action.replace('/', '_')}"
         if hasattr(self, handler_name):
             handler = getattr(self, handler_name)
@@ -86,9 +96,11 @@ class BaseWorker:
                     await handler(arg)
                 else:
                     await asyncio.to_thread(handler, arg)
+                self._ack(cmd_id, action, True)
             except Exception as e:
                 print(f"[{self.prop_id}] {handler_name} failed: {type(e).__name__}: {e}", flush=True)
                 self.publish_status("error", f"{type(e).__name__}: {e}")
+                self._ack(cmd_id, action, False, f"{type(e).__name__}: {e}")
         elif hasattr(self, "do_command"):
             handler = getattr(self, "do_command")
             try:
@@ -96,11 +108,33 @@ class BaseWorker:
                     await handler(action, arg)
                 else:
                     await asyncio.to_thread(handler, action, arg)
+                self._ack(cmd_id, action, True)
             except Exception as e:
                 print(f"[{self.prop_id}] do_command({action}) failed: {type(e).__name__}: {e}", flush=True)
                 self.publish_status("error", f"{type(e).__name__}: {e}")
+                self._ack(cmd_id, action, False, f"{type(e).__name__}: {e}")
         else:
             self.publish_status("warn", f"Unknown action: {action}")
+            self._ack(cmd_id, action, False, f"unknown action: {action}")
+
+    # --- Command acknowledgements (same contract as the coffin firmware) ---
+    @staticmethod
+    def _cmd_id(payload: bytes) -> Optional[str]:
+        """The optional "id" of a JSON command, echoed back in the ack."""
+        try:
+            obj = json.loads(payload.decode("utf-8", errors="ignore"))
+        except Exception:
+            return None
+        if isinstance(obj, dict) and obj.get("id") is not None:
+            return str(obj["id"])
+        return None
+
+    def _ack(self, cmd_id: Optional[str], action: Optional[str], ok: bool, reason: Optional[str] = None) -> None:
+        """Publish {"id", "action", "ok", "reason"} on halloween/<prop_id>/ack (only for commands with an id)."""
+        if cmd_id is None:
+            return
+        self.mqtt.publish(f"halloween/{self.prop_id}/ack",
+                          json.dumps({"id": cmd_id, "action": action, "ok": ok, "reason": reason}), qos=1)
 
     # --- Safety block (same for every worker) ---
     @property

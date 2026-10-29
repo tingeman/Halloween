@@ -55,7 +55,7 @@ class Plugin(CommandUI, BasePlugin):
             if not cmds or not isinstance(topic, str):
                 continue
             for cmd in cmds:
-                self.mqtt_publish(topic, cmd if isinstance(cmd, str) else json.dumps(cmd))
+                self.mqtt_publish(topic, cmd if isinstance(cmd, str) else json.dumps(cmd), qos=1)
         return None  # everything already sent
 
     def on_register(self, app, services):

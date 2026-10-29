@@ -91,8 +91,8 @@ class CommandUI:
         if spec.get("retain"):
             self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1, retain=True)
             return
-        if spec["topic"] is None and getattr(self, "ACKS", False) and isinstance(payload, dict):
-            payload = self._track_command(payload)
+        if spec["topic"] is None and getattr(self, "ACKS", False):
+            payload = self._track_command({"action": payload} if isinstance(payload, str) else payload)
         self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1)
 
     def _wire_button(self, app, cid, spec):

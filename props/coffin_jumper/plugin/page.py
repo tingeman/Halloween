@@ -1,7 +1,7 @@
 """Coffin Jumper plugin (class-based)
 
 The ESP32 publishes one JSON telemetry object on <base>/telemetry and takes
-commands as {"action": ..., "params": {...}} on <base>/cmd. Volumes are the
+commands as {"action": ..., "args": {...}} on <base>/cmd. Volumes are the
 DFPlayer scale 0-30.
 """
 import json
@@ -16,8 +16,7 @@ class Plugin(PropPlugin):
     PROP_ID = "esp32-coffin-jumper-01"
     PREFIX = "cj"
     ACCENT = "#ffb547"
-    ACKS = True  # firmware answers each command on <base>/ack
-    # All stop disarms it like the other props: "stop" ends the action and music
+        # All stop disarms it like the other props: "stop" ends the action and music
     STOP_COMMANDS = [{"action": "stop"}, {"action": "stop_music"}]
 
     @property
@@ -35,7 +34,7 @@ class Plugin(PropPlugin):
             def build(vol):
                 cmd = {"action": action}
                 if vol is not None:
-                    cmd["params"] = {"volume": int(vol)}
+                    cmd["args"] = {"volume": int(vol)}
                 return cmd
             return build
 
@@ -43,7 +42,7 @@ class Plugin(PropPlugin):
             # The slider is also moved to mirror the prop; only send real changes
             if vol is None or vol == self.cache.get(self._key("telem"), {}).get("vol"):
                 return None
-            return {"action": "set_volume", "params": {"volume": int(vol)}}
+            return {"action": "set_volume", "args": {"volume": int(vol)}}
 
         timing_inputs = [
             (self.cid("action-min-s"), "value"),
@@ -57,7 +56,7 @@ class Plugin(PropPlugin):
                 return None
             return {
                 "action": "set_action_timing",
-                "params": {
+                "args": {
                     "action_min_ms": int(round(float(minimum) * 1000)),
                     "action_max_ms": int(round(float(maximum) * 1000)),
                     "action_lockout_ms": int(round(float(lockout) * 1000)),

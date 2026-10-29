@@ -53,8 +53,8 @@ class PropPlugin(CommandUI, BasePlugin):
     PROP_ID = ""
     PREFIX = ""
     ACCENT = None
-    # True for props that answer each command with {"id", "ok", "reason"} on <base>/ack
-    ACKS = False
+    # Every prop answers each command that carries an id with {"id", "ok", "reason"} on <base>/ack
+    ACKS = True  # set False for a prop that does not ack
     STOP_COMMANDS = ["stop"]
     TELEMETRY_ORDER = ("tesla", "hue", "speakers", "volume", "playback")
     STATE_COLORS = {
