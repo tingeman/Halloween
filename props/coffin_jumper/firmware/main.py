@@ -53,6 +53,9 @@ DEFAULT_VOLUME = 20      # DFPlayer volume at boot (0-30); the global limit scal
 MAX_VOLUME = 30
 VOLUME_LIMIT_FILE = "volume_limit.json"   # last global limit, so it survives reboots offline
 BLOCK_FILE = "blocked.json"              # safety block, so it survives reboots
+ACTION_TIMING_FILE = "action_timing.json"
+MAX_CONFIGURABLE_ACTION_MS = 10 * 60 * 1000
+MAX_SOLENOID_DELAY_MS = 10 * 1000
 
 PIR_LOCKOUT_MS = 5000    # Minimum ms between triggers (sensor-level default)
 PIR_DEBOUNCE_MS= 300     # Debounce time for PIR edges (minimum time between edges)
@@ -64,6 +67,7 @@ ACTION_LOCKOUT_MS = 7000  # e.g. keep action lockout separate and possibly longe
 # ---- Safeguards ----
 WDT_TIMEOUT_MS = 60 * 1000       # hardware watchdog: reboot if the loop stalls this long
 ACTION_MAX_MS = 60 * 1000        # failsafe: force-stop an action (solenoid off) after this long
+ACTION_MIN_MS = 5000             # minimum solenoid-on time for an action
 MAX_CONSECUTIVE_ERRORS = 10      # reboot after this many loop errors in a row
 CRASH_LOG = "crash.log"          # on-device error log (kept small)
 CRASH_LOG_MAX_BYTES = 4096
@@ -198,8 +202,12 @@ class CoffinProp:
         self.triggers = 0
         self.volume = DEFAULT_VOLUME          # requested volume; plays at min(volume, cap)
         self.volume_limit = self._load_volume_limit()
+        (self.action_min_ms, self.action_max_ms, self.action_lockout_ms,
+         self.solenoid_delay_ms) = self._load_action_timing()
         self.broker_uptime_str = "—"
         self._last_action_start_ms = None
+        self._solenoid_due_ms = None
+        self._solenoid_started_ms = None
         self.wdt = None
         self._consecutive_errors = 0
         self._log_pending = None   # crash log text found at boot, published once MQTT is up
@@ -286,9 +294,9 @@ class CoffinProp:
     def _action_failsafe(self, now):
         """Force-stop an action that has run longer than ACTION_MAX_MS."""
         if (self.state == "action" and self._last_action_start_ms is not None
-                and time.ticks_diff(now, self._last_action_start_ms) > ACTION_MAX_MS):
-            print("ACTION: exceeded ACTION_MAX_MS, forcing stop")
-            self._publish(T_LOG, "action exceeded max duration, forced stop")
+                and time.ticks_diff(now, self._last_action_start_ms) > self.action_max_ms):
+            print("ACTION: exceeded configured maximum duration, forcing stop")
+            self._publish(T_LOG, "action exceeded configured max duration, forced stop")
             self._stop_action()
 
     # ----------------------------
@@ -433,7 +441,15 @@ class CoffinProp:
         """Perform the pre-programmed action."""
         print("ACTION: Starting...")
         self.play_track(folder=ACTION_FOLDER, track=ACTION_TRACK)
-        self.solenoid_pin.value(1)  # Activate solenoid
+        self._last_action_start_ms = time.ticks_ms()
+        self._solenoid_due_ms = time.ticks_add(self._last_action_start_ms, self.solenoid_delay_ms)
+        self._solenoid_started_ms = None
+        if self.solenoid_delay_ms == 0:
+            if self.solenoid_pin is not None:
+                self.solenoid_pin.value(1)
+                self._solenoid_started_ms = self._last_action_start_ms
+        else:
+            print("Solenoid activation delayed by {} ms".format(self.solenoid_delay_ms))
         self.set_state("action")
         print("ACTION started and state set to 'action'.")
 
@@ -442,6 +458,8 @@ class CoffinProp:
         print("ACTION: Stopping...")
         if self.solenoid_pin:
             self.solenoid_pin.value(0)  # Deactivate solenoid
+        self._solenoid_due_ms = None
+        self._solenoid_started_ms = None
         
         # ensure the player is stopped
         if self.dfp:
@@ -450,10 +468,12 @@ class CoffinProp:
         self.set_state(self._rest_state())
         print("ACTION: Stopped and state reset.")
 
-    def _check_action_status(self):
+    def _check_action_status(self, now=None):
         """If an action is running, check if it has completed."""
         if self.state != "action":
             return
+        if now is None:
+            now = time.ticks_ms()
 
         action_is_ongoing = False
         try:
@@ -471,7 +491,18 @@ class CoffinProp:
             # If there's an error, we should probably stop the action
             action_is_ongoing = False
 
-        if not action_is_ongoing:
+        if (action_is_ongoing and self._solenoid_due_ms is not None
+                and time.ticks_diff(now, self._solenoid_due_ms) >= 0):
+            if self.solenoid_pin is not None:
+                self.solenoid_pin.value(1)
+                self._solenoid_started_ms = now
+            self._solenoid_due_ms = None
+
+        min_time_remaining = (
+            self._solenoid_started_ms is not None
+            and time.ticks_diff(now, self._solenoid_started_ms) < self.action_min_ms
+        )
+        if not action_is_ongoing and not min_time_remaining:
             self._stop_action()
 
     def _process_triggers(self, now):
@@ -503,7 +534,8 @@ class CoffinProp:
             now = time.ticks_ms()
 
         # Prop-level lockout (prevents retrigger while action runs / covers non-PIR triggers)
-        if self._last_action_start_ms and time.ticks_diff(now, self._last_action_start_ms) < ACTION_LOCKOUT_MS:
+        if (self._last_action_start_ms is not None
+                and time.ticks_diff(now, self._last_action_start_ms) < self.action_lockout_ms):
             return False
 
         if self.state == "action":
@@ -519,7 +551,6 @@ class CoffinProp:
         # Accept trigger
         self.triggers += 1
         self._start_action()
-        self._last_action_start_ms = time.ticks_ms()
 
         # Quiet the PIR to avoid immediate re-triggering:
         try:
@@ -528,11 +559,11 @@ class CoffinProp:
                     # # short debounce for PIR-originated edge
                     # self.pir_latch.consume_for(PIR_DEBOUNCE_MS)
                     # Currently we use the same ACTION_LOCKOUT_MS for simplicity
-                    self.pir_latch.consume_for(ACTION_LOCKOUT_MS)
+                    self.pir_latch.consume_for(self.action_lockout_ms)
                 else:
                     # remote trigger: keep PIR quiet for the action lockout to avoid
                     # re-triggering while action runs
-                    self.pir_latch.consume_for(ACTION_LOCKOUT_MS)
+                    self.pir_latch.consume_for(self.action_lockout_ms)
         except Exception:
             pass
 
@@ -592,6 +623,10 @@ class CoffinProp:
         tel = {
             "fw": FW_VERSION,
             "uptime_s": time.ticks_ms() // 1000,
+            "action_min_ms": self.action_min_ms,
+            "action_max_ms": self.action_max_ms,
+            "action_lockout_ms": self.action_lockout_ms,
+            "solenoid_delay_ms": self.solenoid_delay_ms,
             "triggers": self.triggers,
             "pir": "---",
             "relay": "---",
@@ -773,6 +808,8 @@ class CoffinProp:
                 self.sleep(1)  # Give some time for the volume change to take effect
                 new_vol = self.dfp.get_volume()
                 print("Volume now set to:", new_vol)
+        elif action == "set_action_timing":
+            self._set_action_timing(params)
         elif action == "pause_music":
             self.pause()
         elif action == "resume_music":
@@ -798,6 +835,74 @@ class CoffinProp:
                 return min(max(float(json.loads(f.read()).get("scale", 1.0)), 0.0), 1.0)
         except Exception:
             return 1.0
+
+    def _load_action_timing(self):
+        defaults = (ACTION_MIN_MS, ACTION_MAX_MS, ACTION_LOCKOUT_MS, 0)
+        try:
+            with open(ACTION_TIMING_FILE) as f:
+                values = json.loads(f.read())
+            minimum = int(values["action_min_ms"])
+            maximum = int(values["action_max_ms"])
+            lockout = int(values["action_lockout_ms"])
+            delay = int(values.get("solenoid_delay_ms", 0))
+            if (minimum < 0 or maximum < 1 or lockout < 0
+                    or maximum < minimum
+                    or max(minimum, maximum, lockout) > MAX_CONFIGURABLE_ACTION_MS):
+                raise ValueError("stored action timing values are out of range")
+            if not 0 <= delay <= MAX_SOLENOID_DELAY_MS:
+                raise ValueError("stored solenoid delay is out of range")
+            return minimum, maximum, lockout, delay
+        except OSError as e:
+            if not e.args or e.args[0] != 2:
+                print("Could not read action timing settings; using firmware defaults:", e)
+            return defaults
+        except Exception as e:
+            print("Invalid action timing settings; using firmware defaults:", e)
+            return defaults
+
+    def _set_action_timing(self, params):
+        try:
+            raw_minimum = params["action_min_ms"]
+            raw_maximum = params["action_max_ms"]
+            raw_lockout = params["action_lockout_ms"]
+            raw_delay = params.get("solenoid_delay_ms", self.solenoid_delay_ms)
+            if any(isinstance(value, bool) for value in
+                   (raw_minimum, raw_maximum, raw_lockout, raw_delay)):
+                raise ValueError("values must be integer milliseconds")
+            minimum = int(raw_minimum)
+            maximum = int(raw_maximum)
+            lockout = int(raw_lockout)
+            delay = int(raw_delay)
+            if any(value != int_value for value, int_value in (
+                    (raw_minimum, minimum), (raw_maximum, maximum),
+                    (raw_lockout, lockout), (raw_delay, delay))):
+                raise ValueError("values must be integer milliseconds")
+            if (minimum < 0 or maximum < 1 or lockout < 0
+                    or maximum < minimum
+                    or max(minimum, maximum, lockout) > MAX_CONFIGURABLE_ACTION_MS):
+                raise ValueError("values must be 0..600000 ms, with max >= min and max > 0")
+            if not 0 <= delay <= MAX_SOLENOID_DELAY_MS:
+                raise ValueError("solenoid delay must be 0..10000 ms")
+        except (KeyError, TypeError, ValueError) as e:
+            print("Rejected action timing settings:", e)
+            return
+
+        try:
+            with open(ACTION_TIMING_FILE, "w") as f:
+                f.write(json.dumps({
+                    "action_min_ms": minimum,
+                    "action_max_ms": maximum,
+                    "action_lockout_ms": lockout,
+                    "solenoid_delay_ms": delay,
+                }))
+        except Exception as e:
+            print("Could not save action timing settings:", e)
+
+        self.action_min_ms = minimum
+        self.action_max_ms = maximum
+        self.action_lockout_ms = lockout
+        self.solenoid_delay_ms = delay
+        print("Action timing updated:", minimum, maximum, lockout, delay)
 
     def _load_blocked(self) -> bool:
         try:
@@ -1006,7 +1111,7 @@ class CoffinProp:
             self._action_failsafe(now)
 
             # Check and process current action status
-            self._check_action_status()
+            self._check_action_status(now)
 
             # Process triggers (PIR sensor)
             self._process_triggers(now)

@@ -60,16 +60,18 @@ Started by an accepted trigger:
 2. Set the solenoid pin HIGH.
 3. State becomes `action`.
 
-The action ends when the DFPlayer stops playing (polled every loop). Then the
-solenoid goes LOW, the player is stopped, and the state returns to `armed`
-(or `blocked`). `stop_action` ends it early.
+The action ends when the DFPlayer stops playing and the configured minimum
+solenoid-on time has elapsed. Then the solenoid goes LOW, the player is
+stopped, and the state returns to `armed` (or `blocked`). The configured
+maximum duration is a failsafe; `stop_action` ends the action early.
 
-So the solenoid is on for the length of the sound track.
+The solenoid stays on through the sound track, subject to the configured
+minimum-on time and maximum-duration failsafe.
 
 ### Triggers
 PIR motion and the MQTT `trigger` command go through one function,
 `request_trigger()`, so they obey the same rules. A trigger is **rejected** when:
-- an action ran less than `ACTION_LOCKOUT_MS` (7 s) ago,
+- an action ran less than the configured `ACTION_LOCKOUT_MS` (7 s by default) ago,
 - the state is already `action`,
 - the prop is blocked.
 
@@ -133,8 +135,19 @@ Send either a bare word (`trigger`) or JSON `{"action": "...", "params": {...}}`
 | `reset` | | Zero the trigger counter, unblock, set `armed` |
 | `play_music` | `volume` (0-30), `track` (default 1) | Play a track from the root |
 | `set_volume` | `volume` (0-30) | Set DFPlayer volume |
+| `set_action_timing` | `action_min_ms`, `action_max_ms`, `action_lockout_ms`, `solenoid_delay_ms` | Update the action timing values |
 | `pause_music` / `resume_music` | | Pause or resume playback |
 | `stop_music` | | Stop playback |
+
+The dashboard's Action timing fields are shown in seconds and send all four
+values as milliseconds. Minimum, maximum, and lockout fields use whole-second
+steps; solenoid delay uses 0.1-second steps. The firmware accepts action timing
+values from 0 to 600000 ms, requires `action_max_ms` to be greater than zero
+and at least `action_min_ms`, and limits `solenoid_delay_ms` to 0..10000 ms.
+Accepted values are saved in `action_timing.json` so they survive a reboot. If
+no valid saved configuration exists, it uses the firmware defaults (minimum
+5000 ms, maximum 60000 ms, lockout 7000 ms, and no solenoid delay). Current
+settings are included in telemetry.
 
 Quick test (uses the broker container's admin credentials from its environment):
 
@@ -146,14 +159,17 @@ docker exec halloween_mqtt sh -c 'mosquitto_pub -h localhost -u "$MQTT_ADMIN_USE
 
 The widget ([../plugin/page.py](../plugin/page.py)) shows availability and
 state badges and telemetry, with buttons for Trigger, Stop Action,
-Block/Unblock, Reset, Play, Stop playing and Set Volume (volume input).
+Block/Unblock, Reset, Play, Stop playing and Set Volume (volume input). Its
+Action timing fields configure the minimum solenoid-on time, maximum action
+duration, retrigger lockout, and delay between the DFPlayer play command and
+solenoid activation.
 Grey/offline means no `availability=online` has been received.
 
 ## Safeguards and logging
 
 - **Hardware watchdog** (60 s): the board reboots if the main loop stalls.
 - **Guarded loop**: an exception in one iteration is logged and the solenoid is forced off. After 10 consecutive errors the board logs and reboots.
-- **Action failsafe**: an action is force-stopped after 60 s, so the solenoid cannot stay on if the DFPlayer reports "playing" forever.
+- **Action failsafe**: an action is force-stopped after the configured maximum duration (60 s by default), so the solenoid cannot stay on if the DFPlayer reports "playing" forever.
 - **Crash log**: errors are appended to `crash.log` on the board (capped at about 4 KB). Read it with `mpremote connect COM8 fs cat crash.log`.
 - **MQTT**: errors are published to `<base>/log`. A crash log left from the previous boot is published once after reconnecting, then deleted. Telemetry includes `reset_cause` and `loop_errors`.
 - **After using `mpremote`**: connecting interrupts the running program and does not restart it, so the prop goes offline. Run `mpremote connect COM8 reset` (or power-cycle) afterwards, and don't leave a REPL open.
@@ -167,8 +183,9 @@ Grey/offline means no `availability=online` has been received.
   `stop_action`/`block` runs. If the DFPlayer never reports playing (for
   example no SD card or a missing track 1), the action ends on the next loop.
 - `unblock`/`arm` return to `armed` even if a track is playing.
-- Changing the solenoid duration independent of the track length is not
-  implemented.
+- The minimum-on setting keeps the solenoid on after an early track end until
+  the minimum duration has elapsed. The maximum setting can stop the solenoid
+  before a longer track finishes.
 
 ## Setup and deployment
 
