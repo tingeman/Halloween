@@ -11,6 +11,7 @@ topic read halloween/broadcast/#
 topic read halloween/broker/uptime
 topic read halloween/+/uptime
 topic read halloween/+/cmd
+topic read halloween/+/ack
 pattern write halloween/+/cmd
 topic write halloween/ui/#
 topic write halloween/broadcast/volume_limit

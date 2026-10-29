@@ -42,7 +42,7 @@ except Exception:
         secrets = None
 
 # ---- Constants ----
-FW_VERSION = "1.1.0"   # 1.1.0: arm/trigger/pause/stop, stored block, volume limit
+FW_VERSION = "1.2.0"   # 1.2.0: command acks (<base>/ack), QoS 1 cmd, retained blocked flag
 TELEMETRY_INTERVAL_MS = 5000
 MAX_RECONNECT_INTERVAL = 5 * 60 * 1000  # 5 minutes max backoff (given in ms)
 ACTION_FOLDER = 0
@@ -94,6 +94,9 @@ T_STATE = BASE + b"/state"
 T_TEL   = BASE + b"/telemetry"
 T_CMD   = BASE + b"/cmd"
 T_LOG   = BASE + b"/log"
+T_ACK   = BASE + b"/ack"                 # {"id", "action", "ok", "reason"} per command carrying an id
+T_BLOCKED = BASE + b"/state/blocked"     # retained "1"/"0", same flag the workers publish
+CMD_ID_HISTORY = 20                      # recent command ids kept to drop QoS 1 duplicates
 T_BROKER_UP = b"halloween/broker/uptime"
 T_VOL_LIMIT = b"halloween/broadcast/volume_limit"   # retained, JSON {"scale": 0..1}
 
@@ -200,6 +203,7 @@ class CoffinProp:
         self.is_armed = True      # armed: motion (PIR) triggers the action
         self.is_paused = False    # a running action is paused (music held, solenoid off)
         self.triggers = 0
+        self._seen_cmd_ids = []
         self.volume = DEFAULT_VOLUME          # requested volume; plays at min(volume, cap)
         self.volume_limit = self._load_volume_limit()
         (self.action_min_ms, self.action_max_ms, self.action_lockout_ms,
@@ -400,7 +404,7 @@ class CoffinProp:
             self.mqtt.set_last_will(T_AVAIL, b"offline", retain=True, qos=0)
             self.mqtt.set_callback(self._on_mqtt_message)
             self.mqtt.connect()
-            self.mqtt.subscribe(T_CMD)
+            self.mqtt.subscribe(T_CMD, 1)
             self.mqtt.subscribe(T_BROKER_UP)
             self.mqtt.subscribe(T_VOL_LIMIT)
             self._birth()
@@ -435,6 +439,7 @@ class CoffinProp:
         if self.mqtt:
             self._publish(T_AVAIL, b"online", retain=True)
             self._publish_boot_log()
+            self._publish_blocked()
             self.set_state("idle")
 
     def _start_action(self):
@@ -722,18 +727,50 @@ class CoffinProp:
         except:
             s = str(msg)
 
-        action, params = None, {}
+        action, params, cmd_id = None, {}, None
         if s.startswith("{"):
             try:
                 obj = json.loads(s)
                 action = obj.get("action")
-                params = obj.get("params", {})
+                # "params" is the coffin's native key; "args" is the shared worker contract
+                params = obj.get("params", obj.get("args", {}))
+                cmd_id = obj.get("id")
             except Exception:
                 pass
         else:
             action = s.strip().lower()
+        if not isinstance(params, dict):
+            params = {}
+
+        # QoS 1 can deliver a command twice: answer a repeat without running it again
+        if cmd_id is not None and cmd_id in self._seen_cmd_ids:
+            self._ack(cmd_id, action, True, "duplicate")
+            return
 
         print("Command action:", action)
+        try:
+            ok, reason = self._run_cmd(action, params)
+        except Exception as e:
+            ok, reason = False, "error: {}".format(e)
+            self.log_error("command " + str(action), e)
+        if cmd_id is not None:
+            self._seen_cmd_ids.append(cmd_id)
+            del self._seen_cmd_ids[:-CMD_ID_HISTORY]
+            self._ack(cmd_id, action, ok, reason)
+
+    def _ack(self, cmd_id, action, ok, reason=None):
+        """Tell the dashboard what happened to a command."""
+        self._publish(T_ACK, {"id": cmd_id, "action": action, "ok": bool(ok), "reason": reason})
+
+    def _publish_blocked(self):
+        """Retained flag the dashboard shows as the safety-block badge."""
+        self._publish(T_BLOCKED, "1" if self.is_blocked else "0", retain=True)
+
+    def _run_cmd(self, action, params):
+        """Run one command; returns (ok, reason)."""
+        result = (True, None)
+        if not action:
+            return False, "empty or invalid command"
 
         # Same four controls as the other props: arm / trigger / pause / stop.
         # block / unblock is an extra safety lock on top (see README).
@@ -788,11 +825,13 @@ class CoffinProp:
                 accepted = self.request_trigger(now=now, source="mqtt")
                 if not accepted:
                     print("Remote trigger rejected (blocked/lockout/state).")
+                    result = (False, "trigger rejected (blocked, lockout or already running)")
         elif action == "stop_action":
             if self.state == "action":
                 self._stop_action()
         elif action == "play_music" and self.is_blocked:
             print("Play rejected: blocked")
+            result = (False, "blocked")
         elif action == "play_music":
             vol = params.get("volume")
             if vol is not None:
@@ -801,21 +840,26 @@ class CoffinProp:
             self.play_track(folder=0, track=track)
         elif action == "set_volume":
             vol = params.get("volume")
-            if vol is not None:
-                current_vol = self.dfp.get_volume()
-                print("Current volume:", current_vol, "-> New volume:", vol)
-                self.set_volume(vol)
-                self.sleep(1)  # Give some time for the volume change to take effect
-                new_vol = self.dfp.get_volume()
-                print("Volume now set to:", new_vol)
+            if vol is None:
+                result = (False, "missing volume")
+            elif not self.set_volume(vol):
+                result = (False, "volume must be 0-30 and the player available")
         elif action == "set_action_timing":
-            self._set_action_timing(params)
+            result = self._set_action_timing(params)
         elif action == "pause_music":
             self.pause()
         elif action == "resume_music":
             self.resume()
         elif action == "stop_music":
             self.stop()
+        else:
+            result = (False, "unknown action: {}".format(action))
+
+        # Report the new settings at once, so the dashboard need not wait for the next interval
+        self._publish_blocked()
+        self._telemetry()
+        self._last_tel = time.ticks_ms()
+        return result
 
     # ----------------------------
     # DFPlayer Methods
@@ -885,7 +929,7 @@ class CoffinProp:
                 raise ValueError("solenoid delay must be 0..10000 ms")
         except (KeyError, TypeError, ValueError) as e:
             print("Rejected action timing settings:", e)
-            return
+            return False, "rejected timing: {}".format(e)
 
         try:
             with open(ACTION_TIMING_FILE, "w") as f:
@@ -903,6 +947,7 @@ class CoffinProp:
         self.action_lockout_ms = lockout
         self.solenoid_delay_ms = delay
         print("Action timing updated:", minimum, maximum, lockout, delay)
+        return True, None
 
     def _load_blocked(self) -> bool:
         try:
@@ -925,17 +970,19 @@ class CoffinProp:
         except Exception as e:
             print("Could not save volume limit:", e)
 
-    def set_volume(self, vol: int):
+    def set_volume(self, vol: int) -> bool:
         """Set the requested DFPlayer volume (0-30); plays at most volume_cap()."""
-        if not self.dfp: return
+        if not self.dfp: return False
         try:
+            vol = int(vol)
             if 0 <= vol <= MAX_VOLUME:
                 self.volume = vol
                 self.dfp.volume(self.effective_volume())
-            else:
-                print("Volume out of range (0-30):", vol)
+                return True
+            print("Volume out of range (0-30):", vol)
         except Exception as e:
             print("Error setting volume:", e)
+        return False
 
     def play_track(self, folder: int = 0, track: int = 1):
         """Play a specific track on the DFPlayer."""

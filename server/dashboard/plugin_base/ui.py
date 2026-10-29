@@ -86,11 +86,14 @@ class CommandUI:
     def _send(self, spec, *values):
         command = spec["command"]
         payload = command(*values) if callable(command) else command
-        if payload is not None:
-            if spec.get("retain"):
-                self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1, retain=True)
-            else:
-                self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload))
+        if payload is None:
+            return
+        if spec.get("retain"):
+            self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1, retain=True)
+            return
+        if spec["topic"] is None and getattr(self, "ACKS", False) and isinstance(payload, dict):
+            payload = self._track_command(payload)
+        self.mqtt_publish(spec["topic"] or self.T_CMD, _payload(payload), qos=1)
 
     def _wire_button(self, app, cid, spec):
         @app.callback(

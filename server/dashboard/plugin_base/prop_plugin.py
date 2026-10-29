@@ -26,6 +26,7 @@ Shared behaviour:
 import json
 import os
 import time
+import uuid
 
 from dash import html, dcc, Input, Output, State, no_update
 
@@ -33,6 +34,7 @@ from .plugin_base import BasePlugin
 from .ui import CommandUI
 
 STALE_AFTER = float(os.getenv("PROP_STALE_AFTER", "60"))
+ACK_TIMEOUT = 5.0  # seconds to wait for a command acknowledgement
 
 
 def _text(payload: bytes, field: str) -> str:
@@ -51,7 +53,8 @@ class PropPlugin(CommandUI, BasePlugin):
     PROP_ID = ""
     PREFIX = ""
     ACCENT = None
-    STOP_COMMANDS = ["stop"]
+    # True for props that answer each command with {"id", "ok", "reason"} on <base>/ack
+    ACKS = False    STOP_COMMANDS = ["stop"]
     TELEMETRY_ORDER = ("tesla", "hue", "speakers", "volume", "playback")
     STATE_COLORS = {
         "armed": "success", "waiting": "success", "idle": "success", "ready": "success",
@@ -155,6 +158,7 @@ class PropPlugin(CommandUI, BasePlugin):
                 html.Span(id=self.cid("availability"), className="ms-2", children=[badge("unknown")]),
                 html.Span(id=self.cid("state"), className="ms-2", children=[badge("unknown")]),
                 html.Span(id=self.cid("blocked"), className="ms-2"),
+                html.Span(id=self.cid("cmd-status"), className="ms-2 small"),
             ]),
             # Controls and status side by side where there is room (Jarvis), stacked otherwise
             html.Div(className="hw-prop-body", children=[
@@ -174,7 +178,8 @@ class PropPlugin(CommandUI, BasePlugin):
         self.mqtt_subscribe(f"{self.T_BASE}/state/blocked", lambda t, p: self.cache.set(
             self._key("blocked"), p.decode("utf-8", "replace").strip().lower() in ("1", "true", "on", "blocked")))
         self.mqtt_subscribe(self.T_TELEMETRY, self._on_telem)
-
+        if self.ACKS:
+            self.mqtt_subscribe(f"{self.T_BASE}/ack", self._on_ack)
         # One request per prop per tick (separate callbacks per badge starve the
         # last props when the browser's request queue backs up). Only what
         # changed since this browser's last render is sent: re-sending the
@@ -184,6 +189,7 @@ class PropPlugin(CommandUI, BasePlugin):
             Output(self.cid("state"), "children"),
             Output(self.cid("blocked"), "children"),
             Output(self.cid("telem"), "children"),
+            Output(self.cid("cmd-status"), "children"),
             Output(self.cid("sig"), "data"),
             Input(self._tick, "n_intervals"),
             State(self.cid("sig"), "data"),
@@ -193,7 +199,9 @@ class PropPlugin(CommandUI, BasePlugin):
             badges = (self.cache.get(self._key("avail")), self.is_stale(),
                       self.cache.get(self._key("state")), bool(self.cache.get(self._key("blocked"))))
             telem = dict(self.cache.get(self._key("telem"), {}))
-            sig = {"badges": repr(badges), "telem": repr(sorted(telem.items(), key=lambda kv: kv[0]))}
+            cmd_text, cmd_cls = self._command_status()
+            sig = {"badges": repr(badges), "telem": repr(sorted(telem.items(), key=lambda kv: kv[0])),
+                   "cmd": repr((cmd_text, cmd_cls))}
             if sig["badges"] == last.get("badges"):
                 avail = state = blocked = no_update
             else:
@@ -201,11 +209,48 @@ class PropPlugin(CommandUI, BasePlugin):
                 blocked = html.Span("blocked", className="badge bg-danger text-white",
                                     title="Safety block is on") if badges[3] else None
             telem_out = no_update if sig["telem"] == last.get("telem") else self._render_telem(n)
-            if avail is no_update and telem_out is no_update:
-                return no_update, no_update, no_update, no_update, no_update
-            return avail, state, blocked, telem_out, sig
+            if sig["cmd"] == last.get("cmd"):
+                cmd_out = no_update
+            else:
+                cmd_out = html.Span(cmd_text, className=cmd_cls) if cmd_text else None
+            if (avail is no_update and telem_out is no_update and cmd_out is no_update
+                    and sig["telem"] == last.get("telem")):
+                return no_update, no_update, no_update, no_update, no_update, no_update
+            return avail, state, blocked, telem_out, cmd_out, sig
 
         self.register_controls(app)
+
+    # --- command tracking (props that answer with <base>/ack; see ACKS) -----------
+    def _track_command(self, payload: dict) -> dict:
+        """Tag a command with an id and remember it until the prop acknowledges it."""
+        cmd_id = uuid.uuid4().hex[:8]
+        payload = dict(payload, id=cmd_id)
+        self.cache.set(self._key("last_cmd"), {"id": cmd_id, "action": payload.get("action"), "sent": time.time()})
+        return payload
+
+    def _on_ack(self, topic, payload: bytes):
+        try:
+            ack = json.loads(payload.decode("utf-8", "replace"))
+        except Exception:
+            return
+        if isinstance(ack, dict):
+            self.cache.set(self._key("last_ack"), ack)
+
+    def _command_status(self):
+        """(text, css class) for the outcome of the latest command, or ("", "")."""
+        cmd = self.cache.get(self._key("last_cmd"))
+        if not cmd:
+            return "", ""
+        ack = self.cache.get(self._key("last_ack")) or {}
+        action = cmd.get("action")
+        if ack.get("id") == cmd["id"]:
+            if ack.get("ok"):
+                return "", ""
+            return (f"{action}: rejected ({ack.get('reason') or 'no reason'})", "badge bg-danger text-white")
+        age = time.time() - cmd["sent"]
+        if age > ACK_TIMEOUT:
+            return f"{action}: no response from prop", "badge bg-warning text-dark"
+        return f"{action}: sending…", "badge bg-secondary text-white"
 
     def _on_telem(self, topic, payload: bytes):
         try:

@@ -149,6 +149,14 @@ no valid saved configuration exists, it uses the firmware defaults (minimum
 5000 ms, maximum 60000 ms, lockout 7000 ms, and no solenoid delay). Current
 settings are included in telemetry.
 
+Commands may carry an `"id"`; the firmware then answers on `<base>/ack` with
+`{"id", "action", "ok", "reason"}` (a repeated id is acknowledged as
+`duplicate` and not run again). `cmd` is subscribed at QoS 1. After every
+command the firmware publishes telemetry (so `vol` and the timing values are
+current) and the retained `<base>/state/blocked` flag (`1`/`0`). The dashboard
+slider follows the reported `vol`, and shows rejected/unanswered commands next
+to the badges. `params` is the native key; `args` is accepted as well.
+
 Quick test (uses the broker container's admin credentials from its environment):
 
 ```powershell
