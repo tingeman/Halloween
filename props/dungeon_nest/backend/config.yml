@@ -16,7 +16,6 @@ MOTION_SENSORS:
 # --- CHROMECAST SETTINGS ---
 # Media server as seen from the speakers: IP of the PC running docker-compose.media.yml, port 8000.
 # Bare file names in `url` are resolved against this; full http(s):// URLs are used unchanged.
-MEDIA_BASE_URL: "http://10.67.1.115:8000"
 CHROMECAST_DUNGEON_GROUP:
   - name: "dungeon"
     IP: "10.67.1.253"

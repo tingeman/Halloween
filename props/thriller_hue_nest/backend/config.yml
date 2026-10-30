@@ -2,7 +2,7 @@
 
 # --- BEHAVIOR CONSTANTS ---
 MOTION_TIMEOUT: 60        # how long to keep playing when no motion is registered
-WAIT_BETWEEN_PLAYS: 30     # 30 seconds between plays
+WAIT_BETWEEN_PLAYS: 30     # cooldown (seconds) after a show finishes, before the prop re-arms
 TELEMETRY_INTERVAL: 10     # how often to send telemetry updates (seconds)
 
 # --- HUE SETTINGS ---
@@ -17,7 +17,6 @@ MOTION_SENSORS:
 # --- CHROMECAST SETTINGS ---
 # Media server as seen from the speakers: IP of the PC running docker-compose.media.yml, port 8000.
 # Bare file names in `url` are resolved against this; full http(s):// URLs are used unchanged.
-MEDIA_BASE_URL: "http://10.67.1.115:8000"
 CHROMECAST_THRILLER_GROUP:
   - name: "greeter"
     IP: "10.67.1.252"

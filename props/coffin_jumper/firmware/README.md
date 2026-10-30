@@ -62,7 +62,7 @@ Started by an accepted trigger:
 
 The action ends when the DFPlayer stops playing and the configured minimum
 solenoid-on time has elapsed. Then the solenoid goes LOW, the player is
-stopped, and the state returns to `armed` (or `blocked`). The configured
+stopped, and the state returns to `armed` (or `stopped`). The configured
 maximum duration is a failsafe; `stop_action` ends the action early.
 
 The solenoid stays on through the sound track, subject to the configured
@@ -72,11 +72,11 @@ minimum-on time and maximum-duration failsafe.
 PIR motion and the MQTT `trigger` command go through one function,
 `request_trigger()`, so they obey the same rules. A trigger is **rejected** when:
 - an action ran less than the configured `ACTION_LOCKOUT_MS` (7 s by default) ago,
-- the state is already `action`,
-- the prop is blocked.
+- the state is already `action`.
 
-On acceptance the trigger counter increases and the PIR is silenced for
-`ACTION_LOCKOUT_MS` to prevent re-triggering.
+Each started action increments the persistent play counter. Rejected triggers
+do not. The PIR is silenced for `ACTION_LOCKOUT_MS` to prevent re-triggering.
+When blocked, the sound still plays, but the solenoid is not activated.
 
 PIR handling ([pir_hcsr501.py](pir_hcsr501.py)): rising-edge IRQ, ignored for
 `PIR_WARMUP_MS` (5 s) after boot, edges closer than `PIR_DEBOUNCE_MS` (300 ms)
@@ -90,7 +90,6 @@ Published (retained) to `state` and shown on the OLED:
 | `booting` | Initial, before MQTT |
 | `idle` | Just announced online |
 | `armed` | Waiting for a trigger |
-| `blocked` | Triggers rejected (PIR and remote) |
 | `playing` | Music playing outside of an action (`play_music`) |
 | `action` | Jump in progress (sound plus solenoid) |
 | `IO Error` | DFPlayer status check failed |
@@ -103,7 +102,7 @@ Published (retained) to `state` and shown on the OLED:
 - The loop runs every 100 ms; the PIR and local logic keep working offline.
 
 ### OLED
-Shows firmware version, state, trigger count, PIR (`Motion!`/`---`), blocked
+Shows firmware version, state, persistent play count, PIR (`Motion!`/`---`), blocked
 flag and broker uptime (from `halloween/broker/uptime`).
 
 ## MQTT interface
@@ -116,10 +115,11 @@ Base topic: `halloween/esp32-coffin-jumper-01` (hard-coded in `main.py` as
 | `<base>/availability` | device -> | `online` / `offline` (retained, LWT) |
 | `<base>/state` | device -> | state name (retained) |
 | `<base>/telemetry` | device -> | JSON, every 5 s |
+| `<base>/telemetry/playback/PlayCount` | device -> | Persistent play count (retained) |
 | `<base>/cmd` | -> device | plain text or JSON (below) |
 | `halloween/broker/uptime` | -> device | JSON with `uptime_s` |
 
-Telemetry fields: `fw`, `uptime_s`, `triggers`, `pir`, `blocked`, `vol`,
+Telemetry fields: `fw`, `uptime_s`, `play_count`, `pir`, `blocked`, `vol`,
 `rssi`, `solenoid_pin_state`, `solenoid_power`. (`relay` and `relay_pin_state`
 are legacy placeholders and always `---`.)
 
@@ -130,9 +130,9 @@ Send either a bare word (`trigger`) or JSON `{"action": "...", "params": {...}}`
 |---|---|---|
 | `trigger` | | Start an action (subject to the trigger rules above) |
 | `stop_action` | | End a running action |
-| `block` / `unblock` | | Stop any action and reject triggers / allow them again |
-| `arm` | | Set state `armed` if not blocked |
-| `reset` | | Zero the trigger counter, unblock, set `armed` |
+| `block` / `unblock` | | Prevent / allow solenoid activation; sound and triggers continue |
+| `arm` | | Arm motion triggers |
+| `reset_counter` | | Zero the persistent play counter |
 | `play_music` | `volume` (0-30), `track` (default 1) | Play a track from the root |
 | `set_volume` | `volume` (0-30) | Set DFPlayer volume |
 | `set_action_timing` | `action_min_ms`, `action_max_ms`, `action_lockout_ms`, `solenoid_delay_ms` | Update the action timing values |
@@ -187,9 +187,9 @@ Grey/offline means no `availability=online` has been received.
 - Hard-coded base topic and client id mean one device per broker; a second
   coffin needs `BASE` and `secrets.CLIENT_ID` changed (and the plugin topics).
 - The dashboard's volume field is sent with `play_music` and `set_volume`; the
-  firmware ignores `params` for `trigger` and `reset`.
+  firmware ignores `params` for `trigger` and `reset_counter`.
 - The solenoid has no timeout of its own; it stays on until the sound ends or
-  `stop_action`/`block` runs. If the DFPlayer never reports playing (for
+  `stop_action`/`block` runs while unblocked. If the DFPlayer never reports playing (for
   example no SD card or a missing track 1), the action ends on the next loop.
 - `unblock`/`arm` return to `armed` even if a track is playing.
 - The minimum-on setting keeps the solenoid on after an early track end until
@@ -258,14 +258,15 @@ Same four controls as the other props, plus a safety lock:
 
 | Command | Effect | State |
 |---------|--------|-------|
-| `arm` | Motion (PIR) triggers the action again; ends a paused action | `armed` |
+| `arm` | Enable motion triggers; ends a paused action | `armed` |
 | `trigger` | Fire the action by hand (also when stopped); resumes a paused action | `action` |
 | `pause` | Hold a running action: solenoid off, music paused, motion ignored | `paused` |
 | `stop` | Disarm: end the action and music, ignore motion until `arm` | `stopped` |
-| `block` | Safety lock: nothing moves or plays from any source (motion, trigger, music) | `blocked` |
-| `unblock` | Lift the lock, back to `armed` or `stopped` | |
-| `reset` | Clear the trigger count, unblock and arm | `armed` |
+| `block` | Inhibit solenoid activation; trigger sounds still play | state unchanged; `state/blocked` = `1` |
+| `unblock` | Allow solenoid activation again | |
+| `reset_counter` | Clear the persistent play counter without changing prop state | |
 
 The dashboard's All stop sends `stop` (and `stop_music`). The board boots stopped (disarmed), so
 motion is ignored until it is armed from the dashboard. A block is stored in `blocked.json` on the
-board and survives reboots.
+board and survives reboots. The play counter is stored in `play_count.json` and is reset from the
+JARVIS Settings panel's **Reset all play counters** button.

@@ -2,7 +2,7 @@
 
 # --- BEHAVIOR CONSTANTS ---
 MOTION_TIMEOUT: 120        # how long to keep playing when no motion is registered
-WAIT_BETWEEN_PLAYS: 120     # 30 seconds between plays
+WAIT_BETWEEN_PLAYS: 120     # cooldown (seconds) after a show finishes, before the prop re-arms
 TELEMETRY_INTERVAL: 10     # how often to send telemetry updates (seconds)
 USE_TESLA: True
 
@@ -14,10 +14,8 @@ MOTION_SENSORS:
   - "halloween"
 
 # --- CHROMECAST SETTINGS ---
-# Media server as seen from the speakers: IP of the PC running docker-compose.media.yml, port 8000.
-# Update when that PC's IP changes. Bare file names in `url` are resolved against this;
-# full http(s):// URLs are used unchanged.
-MEDIA_BASE_URL: "http://10.67.1.115:8000"
+# Media server as seen from the speakers is set once in config/worker_host.env (MEDIA_BASE_URL).
+# Bare file names in `url` are resolved against it; full http(s):// URLs are used unchanged.
 CHROMECAST_TESLA_GROUP:
   - IP: "10.67.1.250"
     url: "The_skeleton_dance_Oscar_Pascasio.mp3"   # resolved against MEDIA_BASE_URL

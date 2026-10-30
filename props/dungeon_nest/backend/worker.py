@@ -64,7 +64,6 @@ class Worker(BaseWorker):
         self.paused_remaining = 0.0
         self.deadline = 0.0             # monotonic time at which playing stops
         self.last_start = 0.0
-        self.play_count = 0
         self.last_telemetry = 0.0
         self._lock = threading.RLock()  # serialises speaker access (poll thread vs commands)
 
@@ -132,30 +131,36 @@ class Worker(BaseWorker):
             super().apply_volume_limit()
 
     # ----------------------------- sound control -------------------------
-    def _load_and_play(self) -> None:
+    def _load_and_play(self) -> bool:
         with self._lock:
             if not self._have_speakers():
                 print(f"[{PROP_ID}] No speakers available.")
-                return
+                return False
             self.group.load_media(url_list=self._urls(), autoplay=False)
             time.sleep(1)
             self.group.play()
             self.last_start = time.monotonic()
+            return True
 
     def _start_sound(self) -> None:
         """Start the looping action (or just extend it when already playing)."""
-        now = time.monotonic()
-        self.deadline = now + self.config.PLAY_DURATION
         if self.state == "playing":
+            self.deadline = time.monotonic() + self.config.PLAY_DURATION
             return
-        self.play_count += 1
-        print(f"[{PROP_ID}] Starting soundscape (play #{self.play_count}).")
-        self._set_state("playing")
+        if not self._have_speakers():
+            print(f"[{PROP_ID}] No speakers available.")
+            return
         try:
-            self._load_and_play()
+            if not self._load_and_play():
+                return
         except Exception as e:
             print(f"[{PROP_ID}] Failed to start sound: {e}")
             self.telemetry("error", f"Failed to start sound: {e}")
+            return
+        self.deadline = time.monotonic() + self.config.PLAY_DURATION
+        self._set_state("playing")
+        self.record_activation()
+        print(f"[{PROP_ID}] Starting soundscape (play #{self.activation_count}).")
 
     def _pause_sound(self) -> None:
         if self.state != "playing":
@@ -266,7 +271,7 @@ class Worker(BaseWorker):
         else:
             remaining = 0
         self.telemetry("playback/RemainingSeconds", remaining, retain=True)
-        self.telemetry("playback/PlayCount", self.play_count, retain=True)
+        self.telemetry("playback/PlayCount", self.activation_count, retain=True)
         try:
             speaker = self.group.state() if self._have_speakers() else "No Chromecast devices"
         except Exception:

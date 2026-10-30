@@ -29,6 +29,7 @@ import math
 import os
 import threading
 import time
+import uuid
 from collections import deque
 from pathlib import Path
 from urllib.parse import quote
@@ -214,6 +215,9 @@ def create_app(server, mqtt, classic_url="/classic/"):
             html.Button("Soundtrack", id="jv-set-sound", n_clicks=0, className="jv-toggle",
                         disabled=not soundtrack,
                         title=None if soundtrack else "Set JARVIS_SOUNDTRACK to enable"),
+            html.Button("Reset all play counters", id="jv-reset-counters", n_clicks=0,
+                        className="jv-toggle", title="Reset the saved play count on every prop"),
+            html.Div(id="jv-reset-counters-status", className="jv-muted"),
             html.Div("Keys: 1-5 layout · [ ] previous/next prop · C classic · M sound on/off · R restart track", className="jv-muted"),
     ])
 
@@ -364,6 +368,28 @@ def create_app(server, mqtt, classic_url="/classic/"):
         State("jv-settings-panel", "className"),
         prevent_initial_call=True,
     )
+
+    @app.callback(
+        Output("jv-reset-counters-status", "children"),
+        Input("jv-reset-counters", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def _reset_all_play_counters(_):
+        sent = 0
+        for plugin in cards:
+            instance = plugin.get("instance")
+            topic = getattr(instance, "T_CMD", None)
+            prop_id = getattr(instance, "PROP_ID", None)
+            if not isinstance(topic, str) or not isinstance(prop_id, str):
+                continue
+            mqtt.publish(
+                topic,
+                json.dumps({"id": f"reset-all-{uuid.uuid4().hex}", "action": "reset_counter"}),
+                qos=1,
+            )
+            sent += 1
+        return f"Counter reset sent to {sent} prop(s)." if sent else "No prop counters are available."
+
     # The clock is driven by a browser timer aligned to whole seconds (jarvis.js),
     # not by global-tick, which drifts and bunches up behind server callbacks.
 
@@ -406,7 +432,8 @@ def create_app(server, mqtt, classic_url="/classic/"):
         status = dict(items)
 
         def meta(prop, sys_, lvl):
-            return f"{sys_['avail']}{' (stale)' if lvl == 'stale' else ''} · {sys_['state']}"
+            blk = " · blocked" if blocked_props.get(prop) else ""
+            return f"{sys_['avail']}{' (stale)' if lvl == 'stale' else ''} · {sys_['state']}{blk}"
 
         # One fixed rail row per prop pane (clickable); the rest go under "Other systems"
         row_children, row_classes = [], []
@@ -424,7 +451,9 @@ def create_app(server, mqtt, classic_url="/classic/"):
 
         for prop, sys_ in items:
             lvl = levels[prop]
-            shown = "stale" if lvl == "stale" else ("blocked" if lvl == "lock" else sys_["state"])
+            shown = "stale" if lvl == "stale" else sys_["state"]
+            if blocked_props.get(prop) and "blocked" not in shown:
+                shown += " · blocked"
             chips.append(html.Div(className=f"jv-chip {lvl}", title=f"{prop}: {sys_['avail']} / {sys_['state']}", children=[
                 html.Span(className="jv-dot"),
                 html.Span(_label(prop), className="jv-chip-name"),

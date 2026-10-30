@@ -22,11 +22,19 @@ class Plugin(PropPlugin):
 
     @property
     def T_TELEMETRY(self):
-        return f"{self.T_BASE}/telemetry"
+        return f"{self.T_BASE}/telemetry/#"
 
     def parse_telemetry(self, topic, payload: bytes) -> dict:
-        data = json.loads(payload.decode())
-        return {str(k): v for k, v in data.items()} if isinstance(data, dict) else {"telemetry": data}
+        if topic == f"{self.T_BASE}/telemetry":
+            data = json.loads(payload.decode())
+            return {str(k): v for k, v in data.items()} if isinstance(data, dict) else {"telemetry": data}
+        key = topic.split("/telemetry/", 1)[-1]
+        value = payload.decode("utf-8", "replace")
+        try:
+            value = json.loads(value)
+        except ValueError:
+            pass
+        return {key: value}
 
     def controls(self):
         volume = [(self.cid("volume"), "value")]
@@ -78,14 +86,12 @@ class Plugin(PropPlugin):
             self.state_buttons(arm={"action": "arm"}, trigger=with_volume("trigger"),
                                pause={"action": "pause"}, stop={"action": "stop"},
                                trigger_state=volume, confirm_trigger=True),
-            # Extra for the coffin: a safety lock that refuses every physical action
+            # The block prevents solenoid movement while allowing the show sound to play.
             self.row("Safety",
                      self.button("Block", self.cid("block"), {"action": "block"}, "warning",
-                                 title="Lock: nothing moves or plays, from any source, until Unblock"),
+                                 title="Prevent solenoid activation; triggers and sound continue until Unblock"),
                      self.button("Unblock", self.cid("unblock"), {"action": "unblock"},
-                                 title="Lift the lock (back to armed or stopped)"),
-                     self.button("Reset", self.cid("reset"), with_volume("reset"), state=volume,
-                                 title="Clear the trigger count, unblock and arm")),
+                                 title="Allow solenoid activation again")),
             self.row("Music",
                      self.button("Play", self.cid("music-play"), with_volume("play_music"), state=volume),
                      self.button("Stop", self.cid("music-stop"), {"action": "stop_music"}),
