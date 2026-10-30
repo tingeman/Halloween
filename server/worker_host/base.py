@@ -1,6 +1,8 @@
 from __future__ import annotations
 import asyncio, json, os, re
 from dataclasses import dataclass
+from pathlib import Path
+import threading
 from typing import Any, Callable, Optional, Protocol, Iterable, Union
 import inspect
 from pydantic import BaseModel
@@ -44,6 +46,9 @@ class BaseWorker:
         # Safety block (see do_block): what it blocks is up to each worker
         self.blocked = False
         self._seen_cmd_ids: list[str] = []
+        self._activation_lock = threading.Lock()
+        self._activation_file = Path(os.getenv("WORKER_STATE_DIR", "worker-state")) / f"{prop_id}.json"
+        self.activation_count = self._load_activation_count()
 
     # --- Lifecycle ---
     async def start(self) -> None:
@@ -56,6 +61,7 @@ class BaseWorker:
         self.mqtt.publish(f"halloween/{self.prop_id}/availability", "online", qos=1, retain=True)
         # announce state
         self.publish_state("started", qos=1, retain=True)
+        self.telemetry("playback/PlayCount", self.activation_count, retain=True)
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -149,6 +155,46 @@ class BaseWorker:
     async def do_unblock(self, arg) -> None:
         self.blocked = False
         self.mqtt.publish(self._t_blocked, "0", qos=1, retain=True)
+
+    async def do_reset_counter(self, arg) -> None:
+        self.set_activation_count(0)
+        self.telemetry("playback/PlayCount", self.activation_count, retain=True)
+
+    def _load_activation_count(self) -> int:
+        try:
+            with self._activation_file.open(encoding="utf-8") as state_file:
+                state = json.load(state_file)
+        except FileNotFoundError:
+            return 0
+        count = state.get("activation_count") if isinstance(state, dict) else None
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError(f"Invalid activation counter in {self._activation_file}")
+        return count
+
+    def _write_activation_count(self, count: int) -> None:
+        self._activation_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary_file = self._activation_file.with_suffix(".tmp")
+        with temporary_file.open("w", encoding="utf-8") as state_file:
+            json.dump({"activation_count": count}, state_file)
+            state_file.flush()
+            os.fsync(state_file.fileno())
+        os.replace(temporary_file, self._activation_file)
+
+    def set_activation_count(self, count: int) -> None:
+        with self._activation_lock:
+            self._write_activation_count(count)
+            self.activation_count = count
+
+    def record_activation(self) -> None:
+        with self._activation_lock:
+            count = self.activation_count + 1
+            try:
+                self._write_activation_count(count)
+            except OSError as e:
+                print(f"[{self.prop_id}] Failed to persist activation counter: {e}", flush=True)
+                self.publish_status("error", f"Failed to persist activation counter: {e}")
+            self.activation_count = count
+        self.telemetry("playback/PlayCount", self.activation_count, retain=True)
 
     # --- Broadcasts (same for every worker) ---
     async def on_broadcast(self, msg: MqttMessage) -> None:

@@ -2,6 +2,7 @@
 
 # --- BEHAVIOR ---
 PLAY_DURATION: 300        # seconds the soundscape loops after the last motion (retrigger resets this)
+WAIT_BETWEEN_PLAYS: 30    # cooldown seconds after a soundscape ends before re-arming
 AUTO_ARM: false           # true = start armed (reacting to motion); false = start stopped until armed
 SENSOR_POLL_INTERVAL: 1   # seconds between motion sensor polls
 TELEMETRY_INTERVAL: 10    # seconds between telemetry updates
@@ -14,9 +15,8 @@ MOTION_SENSORS:
   - "Hue outdoor motion sensor 2"
 
 # --- CHROMECAST SETTINGS ---
-# Media server as seen from the speakers: IP of the PC running docker-compose.media.yml, port 8000.
-# Bare file names in `url` are resolved against this; full http(s):// URLs are used unchanged.
-MEDIA_BASE_URL: "http://10.67.1.115:8000"
+# Bare file names in `url` are resolved against MEDIA_BASE_URL (config/worker_host.env);
+# full http(s):// URLs are used unchanged.
 CHROMECAST_DUNGEON_GROUP:
   - name: "dungeon"
     IP: "10.67.1.253"

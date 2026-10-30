@@ -25,6 +25,13 @@ The `worker_host` container:
 
 This design keeps each prop **self-contained** while allowing inter‑prop coordination.
 
+`BaseWorker` owns the persistent activation counter. Prop workers call
+`record_activation()` only when a main-prop play starts; the shared
+`reset_counter` command clears it. Counts are published as retained
+`playback/PlayCount` telemetry and stored under `WORKER_STATE_DIR`. The worker
+Compose service mounts a named volume there so counts survive container
+recreation.
+
 ---
 
 ## 🧩 Worker Concept

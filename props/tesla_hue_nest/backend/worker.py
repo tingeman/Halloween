@@ -174,6 +174,12 @@ class StoppedState(State):
             case 'disco':
                 context.hue_manager.toggle_disco()
             case 'arm':
+                context.play_after_arm = False
+                context.set_state(ArmingState)
+            case 'play':
+                # Media is only loaded while arming: arm, then play at once, and return here after the cooldown
+                context.play_after_arm = True
+                context.after_play_state = StoppedState
                 context.set_state(ArmingState)
             case 'volume_up':
                 if not context.cc_tesla_group.is_empty():
@@ -217,7 +223,11 @@ class ArmingState(State):
                 context.cc_tesla_group.load_media(url_list=url_list)
                 print('Tesla media loaded and ready...')
 
-        context.set_state(WaitingState)
+        if context.play_after_arm:
+            context.play_after_arm = False
+            context.set_state(PlayingState)
+        else:
+            context.set_state(WaitingState)
 
     def handle(self, context):
         """
@@ -277,28 +287,44 @@ class CooldownState(State):
     """
     Enforces a delay between prop activations.
 
-    This state does nothing for a fixed duration, preventing the prop from
-    triggering too frequently. It then transitions back to the ArmingState.
+    Entered after a show has finished (FadeOutState). Motion is ignored for WAIT_BETWEEN_PLAYS seconds (a manual play skips the rest), then the prop returns to the
+    state it was in before the show: ArmingState if it was armed,
+    StoppedState if the show was started manually without being armed.
+    The remaining time is published as the timers/Cooldown telemetry.
     """
     def __init__(self, context):
         """Initializes the cooldown timer."""
-        print("Entering cooldown state for 30 seconds...")
-        self.cooldown_end_time = time.monotonic() + 30
+        self.duration = context.config.WAIT_BETWEEN_PLAYS
+        print(f"Entering cooldown state for {self.duration} seconds...")
+        self.cooldown_end_time = time.monotonic() + self.duration
+        self._shown = None
+
+    def _publish_remaining(self, context, remaining):
+        if remaining != self._shown:
+            self._shown = remaining
+            context.telemetry("timers/Cooldown", f"{remaining} s" if remaining else "-", retain=True)
 
     def handle(self, context):
         """
-        Checks if the cooldown period has elapsed and transitions if so.
+        Counts down and transitions back when the cooldown period has elapsed.
         """
-        if time.monotonic() >= self.cooldown_end_time:
-            print("Cooldown finished. Re-arming.")
-            context.set_state(ArmingState)
+        remaining = max(0, int(self.cooldown_end_time - time.monotonic() + 0.999))
+        self._publish_remaining(context, remaining)
+        if remaining == 0:
+            print("Cooldown finished.")
+            context.set_state(context.after_play_state)
 
     def on_action(self, context, action, arg):
         """Allows the prop to be stopped manually during cooldown."""
         print(f"{self.__class__.__name__}::action passed: {action}, arg: {arg}")
-        # Allow stopping during cooldown
         if action == 'stop':
+            self._publish_remaining(context, 0)
             context.set_state(StoppedState)
+        elif action == 'play':
+            # A manual play skips the rest of the cooldown; the media is reloaded via ArmingState
+            self._publish_remaining(context, 0)
+            context.play_after_arm = True
+            context.set_state(ArmingState)
 
 
 class PlayingState(State):
@@ -315,16 +341,19 @@ class PlayingState(State):
         Heavy I/O (device commands) are performed in on_enter(), which will be
         executed in the worker's synchronous thread before handle() is called.
         """
-        self.wait_between_plays = context.config.WAIT_BETWEEN_PLAYS
         self.timeout_interval = context.config.MOTION_TIMEOUT  # Timeout interval in seconds
         self.last_motion_time = time.monotonic()
+        # Remember where to return after the show and its cooldown
+        if isinstance(context.current_state, StoppedState):
+            context.after_play_state = StoppedState
+        elif isinstance(context.current_state, WaitingState):
+            context.after_play_state = ArmingState
         # Flag to guard repeated on_enter execution if needed
         self._entered = False
 
     def on_enter(self, context):
         """Perform blocking initialization (safe in sync thread):
 
-        - enforce cooldown between plays
         - query Tesla vehicle state
         - start media playback and open trunk as configured
         - send hue commands
@@ -333,12 +362,6 @@ class PlayingState(State):
             return
         self._entered = True
 
-        # Check if WAIT_BETWEEN_PLAYS seconds have passed since last play
-        delta_time = time.monotonic() - context.time_of_last_play
-        if delta_time < self.wait_between_plays:
-            context.set_state(CooldownState)
-            return
-
         if context.config.USE_TESLA and context.tesla_car is not None:
             try:
                 context.tesla_car.get_vehicle_state()
@@ -346,8 +369,7 @@ class PlayingState(State):
                 self.telemetry("tesla/error", f"get_vehicle_state failed: {e}")
 
         print("System is playing...")
-        context.time_of_last_play = time.monotonic()
-        context.play_counter += 1
+        context.record_activation()
         # Hue command (safe to call even if null manager)
         try:
             if context.config.HUE_PLAYING_SCENE.lower() == 'disco':
@@ -415,8 +437,6 @@ class PlayingState(State):
                 context.set_state(FadeOutState)
             case 'disco':
                 context.hue_manager.toggle_disco()
-            case 'reset':
-                self.last_motion_time = time.monotonic()
             case 'volume_up':
                 if not context.cc_tesla_group.is_empty():
                     context.cc_tesla_group.volume_up()
@@ -492,7 +512,7 @@ class FadeOutState(State):
     Gracefully ends the prop sequence.
 
     This state fades out the media volume, closes the Tesla trunk, and fades
-    the lights to off over a set transition time before re-arming.
+    the lights to off, then enters the cooldown before the prop is re-armed.
     """
     def __init__(self, context):
         """Initializes the fade-out sequence."""
@@ -513,11 +533,11 @@ class FadeOutState(State):
 
     def handle(self, context):
         """
-        Waits for the fade-out transition to complete, then re-arms.
+        Waits for the fade-out transition to complete, then starts the cooldown.
         """
         # This state's work is done in __init__. We just wait here.
         if time.monotonic() >= self.next_state_time:
-            context.set_state(ArmingState)
+            context.set_state(CooldownState)
 
     def on_action(self, context, action, arg):
         """Allows the prop to be stopped manually during fade-out."""
@@ -719,8 +739,8 @@ class Worker(BaseWorker):
         self.command_queue = queue.Queue() # Will hold incoming commands
 
         # State Machine Variables
-        self.play_counter = 0
-        self.time_of_last_play = time.monotonic() - 600    # set it to 10 minutes ago
+        self.after_play_state = ArmingState   # where the cooldown returns to (see PlayingState)
+        self.play_after_arm = False           # manual play from Stopped: ArmingState goes on to PlayingState
 
         self.hue_lights = []
         self.hue_manager = _NullHueManager()  # Default to null manager
