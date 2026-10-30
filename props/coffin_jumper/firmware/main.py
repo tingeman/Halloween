@@ -42,7 +42,7 @@ except Exception:
         secrets = None
 
 # ---- Constants ----
-FW_VERSION = "1.3.0"   # 1.3.0: physical-only block and persistent activation counter
+FW_VERSION = "1.4.0"   # 1.4.0: cooldown state, single "playing" state; 1.3.0: physical-only block and play counter
 TELEMETRY_INTERVAL_MS = 5000
 MAX_RECONNECT_INTERVAL = 5 * 60 * 1000  # 5 minutes max backoff (given in ms)
 ACTION_FOLDER = 0
@@ -62,8 +62,9 @@ PIR_LOCKOUT_MS = 5000    # Minimum ms between triggers (sensor-level default)
 PIR_DEBOUNCE_MS= 300     # Debounce time for PIR edges (minimum time between edges)
 PIR_WARMUP_MS  = 5000    # Ignore PIR edges for this long after boot
 
-# Prop-level policy: how long to ignore any retriggers after starting an action
-ACTION_LOCKOUT_MS = 7000  # e.g. keep action lockout separate and possibly longer
+# Cooldown: after an action ends the prop stays in "cooldown" this long before it re-arms.
+# Stored/telemetry key stays "action_lockout_ms" for compatibility.
+ACTION_LOCKOUT_MS = 30000
 
 # ---- Safeguards ----
 WDT_TIMEOUT_MS = 60 * 1000       # hardware watchdog: reboot if the loop stalls this long
@@ -212,6 +213,9 @@ class CoffinProp:
          self.solenoid_delay_ms) = self._load_action_timing()
         self.broker_uptime_str = "—"
         self._last_action_start_ms = None
+        self._in_action = False          # the pre-programmed action (not just music) is running
+        self._cooldown_until_ms = None   # set while in the "cooldown" state
+        self._last_cooldown_pub_ms = 0
         self._solenoid_due_ms = None
         self._solenoid_started_ms = None
         self.wdt = None
@@ -299,11 +303,11 @@ class CoffinProp:
 
     def _action_failsafe(self, now):
         """Force-stop an action that has run longer than ACTION_MAX_MS."""
-        if (self.state == "action" and self._last_action_start_ms is not None
+        if (self._in_action and not self.is_paused and self._last_action_start_ms is not None
                 and time.ticks_diff(now, self._last_action_start_ms) > self.action_max_ms):
             print("ACTION: exceeded configured maximum duration, forcing stop")
             self._publish(T_LOG, "action exceeded configured max duration, forced stop")
-            self._stop_action()
+            self._stop_action(cooldown=True)
 
     # ----------------------------
     # Initialization
@@ -425,6 +429,8 @@ class CoffinProp:
     # ----------------------------
     def _rest_state(self) -> str:
         """State when no action runs; blocking is a separate flag."""
+        if self._cooldown_until_ms is not None:
+            return "cooldown"
         return "armed" if self.is_armed else "stopped"
 
     def set_state(self, new_state: str):
@@ -441,7 +447,6 @@ class CoffinProp:
             self._publish_boot_log()
             self._publish_blocked()
             self._publish_play_count()
-            self.set_state("idle")
 
     def _start_action(self):
         """Perform the pre-programmed action."""
@@ -453,21 +458,29 @@ class CoffinProp:
             if not self.is_blocked else None
         )
         self._solenoid_started_ms = None
+        self._in_action = True
+        self._cooldown_until_ms = None
         if self.solenoid_delay_ms == 0 and not self.is_blocked:
             if self.solenoid_pin is not None:
                 self.solenoid_pin.value(1)
                 self._solenoid_started_ms = self._last_action_start_ms
         elif self.solenoid_delay_ms > 0 and not self.is_blocked:
             print("Solenoid activation delayed by {} ms".format(self.solenoid_delay_ms))
-        self.set_state("action")
+        self.set_state("playing")
         self.play_count += 1
         self._save_play_count()
         self._publish_play_count()
-        print("ACTION started and state set to 'action'.")
+        print("ACTION started.")
 
-    def _stop_action(self):
-        """Clean up after the action is finished."""
+    def _stop_action(self, cooldown=False):
+        """Clean up after the action. cooldown=True (natural end) enters the cooldown state."""
         print("ACTION: Stopping...")
+        self._in_action = False
+        self._cooldown_until_ms = (
+            time.ticks_add(time.ticks_ms(), self.action_lockout_ms)
+            if cooldown and self.action_lockout_ms > 0 else None
+        )
+        self._last_cooldown_pub_ms = time.ticks_ms()
         if self.solenoid_pin:
             self.solenoid_pin.value(0)  # Deactivate solenoid
         self._solenoid_due_ms = None
@@ -478,11 +491,26 @@ class CoffinProp:
             self.dfp.stop()
 
         self.set_state(self._rest_state())
+        if self._cooldown_until_ms is not None:
+            self._telemetry()
         print("ACTION: Stopped and state reset.")
+
+    def _check_cooldown(self, now):
+        """Leave the cooldown state when its time is up; refresh the countdown once a second."""
+        if self._cooldown_until_ms is None:
+            return
+        if time.ticks_diff(now, self._cooldown_until_ms) >= 0:
+            self._cooldown_until_ms = None
+            if self.state == "cooldown":
+                self.set_state(self._rest_state())
+            self._telemetry()
+        elif time.ticks_diff(now, self._last_cooldown_pub_ms) >= 1000:
+            self._last_cooldown_pub_ms = now
+            self._telemetry()
 
     def _check_action_status(self, now=None):
         """If an action is running, check if it has completed."""
-        if self.state != "action":
+        if not self._in_action or self.is_paused:
             return
         if now is None:
             now = time.ticks_ms()
@@ -515,7 +543,7 @@ class CoffinProp:
             and time.ticks_diff(now, self._solenoid_started_ms) < self.action_min_ms
         )
         if not action_is_ongoing and not min_time_remaining:
-            self._stop_action()
+            self._stop_action(cooldown=True)
 
     def _process_triggers(self, now):
         """Check trigger conditions and start an action if appropriate.
@@ -545,12 +573,8 @@ class CoffinProp:
         if now is None:
             now = time.ticks_ms()
 
-        # Prop-level lockout (prevents retrigger while action runs / covers non-PIR triggers)
-        if (self._last_action_start_ms is not None
-                and time.ticks_diff(now, self._last_action_start_ms) < self.action_lockout_ms):
-            return False
-
-        if self.state == "action":
+        # No new action while one runs or during the cooldown
+        if self._in_action or self._cooldown_until_ms is not None:
             return False
 
         # Motion only counts while armed and not paused; a manual Trigger always may
@@ -634,6 +658,8 @@ class CoffinProp:
             "action_min_ms": self.action_min_ms,
             "action_max_ms": self.action_max_ms,
             "action_lockout_ms": self.action_lockout_ms,
+            "cooldown_s": (max(0, time.ticks_diff(self._cooldown_until_ms, time.ticks_ms()) // 1000 + 1)
+                           if self._cooldown_until_ms is not None else 0),
             "solenoid_delay_ms": self.solenoid_delay_ms,
             "play_count": self.play_count,
             "pir": "---",
@@ -786,12 +812,12 @@ class CoffinProp:
             self._solenoid_started_ms = None
             if self.solenoid_pin:
                 self.solenoid_pin.value(0)
-            if self.state != "action":
+            if self.state not in ("playing", "paused"):
                 self.set_state(self._rest_state())
         elif action == "unblock":
             self.is_blocked = False
             self._save_blocked()
-            if self.state != "action":
+            if self.state not in ("playing", "paused"):
                 self.set_state(self._rest_state())
         elif action == "reset_counter":
             self.play_count = 0
@@ -803,7 +829,7 @@ class CoffinProp:
             if self.is_paused:                    # arming ends a paused action
                 self.is_paused = False
                 self._stop_action()
-            elif self.state not in ("action", "playing"):
+            elif self.state != "playing":
                 self.set_state(self._rest_state())
         elif action == "stop":
             # Disarm: end anything running and ignore motion until armed again
@@ -811,9 +837,8 @@ class CoffinProp:
             self.is_paused = False
             self._stop_action()
         elif action == "pause":
-            if self.state in ("action", "playing") and not self.is_paused:
+            if self.state == "playing" and not self.is_paused:
                 self.is_paused = True
-                self._paused_from = self.state
                 if self.solenoid_pin:
                     self.solenoid_pin.value(0)
                 self.pause()
@@ -822,17 +847,16 @@ class CoffinProp:
             if self.is_paused:                    # Trigger resumes a paused action
                 self.is_paused = False
                 self.resume()
-                if getattr(self, "_paused_from", "action") == "action":
+                if self._in_action:
                     self._last_action_start_ms = time.ticks_ms()   # failsafe counts from resume
-                    self.set_state("action")
             else:
                 now = time.ticks_ms()
                 accepted = self.request_trigger(now=now, source="mqtt")
                 if not accepted:
                     print("Remote trigger rejected (lockout/state).")
-                    result = (False, "trigger rejected (lockout or already running)")
+                    result = (False, "trigger rejected (cooldown or already running)")
         elif action == "stop_action":
-            if self.state == "action":
+            if self._in_action:
                 self._stop_action()
         elif action == "play_music":
             vol = params.get("volume")
@@ -1183,6 +1207,7 @@ class CoffinProp:
 
             # Check and process current action status
             self._check_action_status(now)
+            self._check_cooldown(now)
 
             # Process triggers (PIR sensor)
             self._process_triggers(now)

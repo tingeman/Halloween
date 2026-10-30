@@ -58,11 +58,12 @@ the timezone offset (`TZ_OFFSET_HOURS`; adjust for DST).
 Started by an accepted trigger:
 1. Play track 1 from the DFPlayer root (`ACTION_FOLDER=0`, `ACTION_TRACK=1`).
 2. Set the solenoid pin HIGH.
-3. State becomes `action`.
+3. State becomes `playing`.
 
 The action ends when the DFPlayer stops playing and the configured minimum
 solenoid-on time has elapsed. Then the solenoid goes LOW, the player is
-stopped, and the state returns to `armed` (or `stopped`). The configured
+stopped, and the state becomes `cooldown` for `ACTION_LOCKOUT_MS`, then returns to `armed`
+(or `stopped`, if it was started manually while disarmed). The configured
 maximum duration is a failsafe; `stop_action` ends the action early.
 
 The solenoid stays on through the sound track, subject to the configured
@@ -71,11 +72,12 @@ minimum-on time and maximum-duration failsafe.
 ### Triggers
 PIR motion and the MQTT `trigger` command go through one function,
 `request_trigger()`, so they obey the same rules. A trigger is **rejected** when:
-- an action ran less than the configured `ACTION_LOCKOUT_MS` (7 s by default) ago,
-- the state is already `action`.
+- the state is `cooldown` (the configured `ACTION_LOCKOUT_MS`, 30 s by default, after the
+  last action ended; `stop` or `stop_action` cancel the cooldown),
+- an action is already running.
 
 Each started action increments the persistent play counter. Rejected triggers
-do not. The PIR is silenced for `ACTION_LOCKOUT_MS` to prevent re-triggering.
+do not.
 When blocked, the sound still plays, but the solenoid is not activated.
 
 PIR handling ([pir_hcsr501.py](pir_hcsr501.py)): rising-edge IRQ, ignored for
@@ -88,10 +90,11 @@ Published (retained) to `state` and shown on the OLED:
 | State | Meaning |
 |---|---|
 | `booting` | Initial, before MQTT |
-| `idle` | Just announced online |
+| `stopped` | Disarmed; motion ignored (manual Trigger still works) |
 | `armed` | Waiting for a trigger |
-| `playing` | Music playing outside of an action (`play_music`) |
-| `action` | Jump in progress (sound plus solenoid) |
+| `playing` | A jump (sound plus solenoid) or music (`play_music`) is playing |
+| `paused` | Action or music held |
+| `cooldown` | An action just ended; waiting `ACTION_LOCKOUT_MS` before re-arming (`cooldown_s` in telemetry) |
 | `IO Error` | DFPlayer status check failed |
 
 ### Connectivity
@@ -146,7 +149,7 @@ values from 0 to 600000 ms, requires `action_max_ms` to be greater than zero
 and at least `action_min_ms`, and limits `solenoid_delay_ms` to 0..10000 ms.
 Accepted values are saved in `action_timing.json` so they survive a reboot. If
 no valid saved configuration exists, it uses the firmware defaults (minimum
-5000 ms, maximum 60000 ms, lockout 7000 ms, and no solenoid delay). Current
+5000 ms, maximum 60000 ms, lockout/cooldown 30000 ms, and no solenoid delay). Current
 settings are included in telemetry.
 
 Commands may carry an `"id"`; the firmware then answers on `<base>/ack` with
@@ -170,7 +173,7 @@ The widget ([../plugin/page.py](../plugin/page.py)) shows availability and
 state badges and telemetry, with buttons for Trigger, Stop Action,
 Block/Unblock, Reset, Play, Stop playing and Set Volume (volume input). Its
 Action timing fields configure the minimum solenoid-on time, maximum action
-duration, retrigger lockout, and delay between the DFPlayer play command and
+duration, cooldown after an action, and delay between the DFPlayer play command and
 solenoid activation.
 Grey/offline means no `availability=online` has been received.
 
@@ -259,7 +262,7 @@ Same four controls as the other props, plus a safety lock:
 | Command | Effect | State |
 |---------|--------|-------|
 | `arm` | Enable motion triggers; ends a paused action | `armed` |
-| `trigger` | Fire the action by hand (also when stopped); resumes a paused action | `action` |
+| `trigger` | Fire the action by hand (also when stopped, not during cooldown); resumes a paused action | `playing` |
 | `pause` | Hold a running action: solenoid off, music paused, motion ignored | `paused` |
 | `stop` | Disarm: end the action and music, ignore motion until `arm` | `stopped` |
 | `block` | Inhibit solenoid activation; trigger sounds still play | state unchanged; `state/blocked` = `1` |
