@@ -275,7 +275,7 @@ class FadeOutState(State):
 
 class CooldownState(State):
     """
-    Ignores motion and play requests for WAIT_BETWEEN_PLAYS seconds after a show,
+    Ignores motion for WAIT_BETWEEN_PLAYS seconds after a show (a manual play skips the rest),
     then returns to the state before the show: ArmingState if it was armed,
     StoppedState if the show was started by hand. The remaining time is
     published as the timers/Cooldown telemetry.
@@ -304,6 +304,10 @@ class CooldownState(State):
         if action == 'stop':
             self._publish_remaining(context, 0)
             context.set_state(StoppedState)
+        elif action == 'play':
+            # A manual play skips the rest of the cooldown and keeps the state to return to
+            self._publish_remaining(context, 0)
+            context.set_state(PlayingState)
 
 
 # ================================ WORKER ================================

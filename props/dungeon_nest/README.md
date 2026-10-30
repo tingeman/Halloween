@@ -14,7 +14,8 @@ States: `stopped` (ignores motion), `arming` (connecting speakers), `armed` (wai
   (300 s) into the future, so a retrigger resets the timeout.
 - When the deadline passes the sound fades out (5 s), then the prop waits in `cooldown`
   for `WAIT_BETWEEN_PLAYS` (30 s) and returns to `armed` (or `stopped` if the play was
-  started manually from `stopped`).
+  started manually from `stopped`). Motion is ignored during the cooldown, but a manual Play
+  is accepted and skips the rest of it.
 - If the track ends before the deadline it is restarted.
 - Nothing else is switched (no lights, no motor).
 

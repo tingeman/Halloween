@@ -573,8 +573,10 @@ class CoffinProp:
         if now is None:
             now = time.ticks_ms()
 
-        # No new action while one runs or during the cooldown
-        if self._in_action or self._cooldown_until_ms is not None:
+        # No new action while one runs; during the cooldown only motion is ignored
+        if self._in_action:
+            return False
+        if self._cooldown_until_ms is not None and source == "pir":
             return False
 
         # Motion only counts while armed and not paused; a manual Trigger always may
@@ -854,7 +856,7 @@ class CoffinProp:
                 accepted = self.request_trigger(now=now, source="mqtt")
                 if not accepted:
                     print("Remote trigger rejected (lockout/state).")
-                    result = (False, "trigger rejected (cooldown or already running)")
+                    result = (False, "trigger rejected (already running)")
         elif action == "stop_action":
             if self._in_action:
                 self._stop_action()

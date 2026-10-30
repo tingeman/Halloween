@@ -72,8 +72,9 @@ minimum-on time and maximum-duration failsafe.
 ### Triggers
 PIR motion and the MQTT `trigger` command go through one function,
 `request_trigger()`, so they obey the same rules. A trigger is **rejected** when:
-- the state is `cooldown` (the configured `ACTION_LOCKOUT_MS`, 30 s by default, after the
-  last action ended; `stop` or `stop_action` cancel the cooldown),
+- it comes from the PIR during `cooldown` (the configured `ACTION_LOCKOUT_MS`, 30 s by default,
+  after the last action ended; `stop` or `stop_action` cancel the cooldown). A manual
+  trigger is accepted during the cooldown and skips the rest of it,
 - an action is already running.
 
 Each started action increments the persistent play counter. Rejected triggers
@@ -262,7 +263,7 @@ Same four controls as the other props, plus a safety lock:
 | Command | Effect | State |
 |---------|--------|-------|
 | `arm` | Enable motion triggers; ends a paused action | `armed` |
-| `trigger` | Fire the action by hand (also when stopped, not during cooldown); resumes a paused action | `playing` |
+| `trigger` | Fire the action by hand (also when stopped or in cooldown); resumes a paused action | `playing` |
 | `pause` | Hold a running action: solenoid off, music paused, motion ignored | `paused` |
 | `stop` | Disarm: end the action and music, ignore motion until `arm` | `stopped` |
 | `block` | Inhibit solenoid activation; trigger sounds still play | state unchanged; `state/blocked` = `1` |

@@ -282,8 +282,7 @@ class CooldownState(State):
     """
     Enforces a delay between prop activations.
 
-    Entered after a show has finished (FadeOutState). Motion and play requests
-    are ignored for WAIT_BETWEEN_PLAYS seconds, then the prop returns to the
+    Entered after a show has finished (FadeOutState). Motion is ignored for WAIT_BETWEEN_PLAYS seconds (a manual play skips the rest), then the prop returns to the
     state it was in before the show: ArmingState if it was armed,
     StoppedState if the show was started manually without being armed.
     The remaining time is published as the timers/Cooldown telemetry.
@@ -313,10 +312,14 @@ class CooldownState(State):
     def on_action(self, context, action, arg):
         """Allows the prop to be stopped manually during cooldown."""
         print(f"{self.__class__.__name__}::action passed: {action}, arg: {arg}")
-        # Allow stopping during cooldown
         if action == 'stop':
             self._publish_remaining(context, 0)
             context.set_state(StoppedState)
+        elif action == 'play':
+            # A manual play skips the rest of the cooldown; the media is reloaded via ArmingState
+            self._publish_remaining(context, 0)
+            context.play_after_arm = True
+            context.set_state(ArmingState)
 
 
 class PlayingState(State):
