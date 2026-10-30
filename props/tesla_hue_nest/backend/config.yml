@@ -2,7 +2,7 @@
 
 # --- BEHAVIOR CONSTANTS ---
 MOTION_TIMEOUT: 120        # how long to keep playing when no motion is registered
-WAIT_BETWEEN_PLAYS: 120     # cooldown (seconds) after a show finishes, before the prop re-arms
+WAIT_BETWEEN_PLAYS: 30     # cooldown (seconds) after a show finishes, before the prop re-arms
 TELEMETRY_INTERVAL: 10     # how often to send telemetry updates (seconds)
 USE_TESLA: True
 
