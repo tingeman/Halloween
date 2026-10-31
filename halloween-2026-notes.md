@@ -121,6 +121,15 @@ A successful Halloween. All props ran through the evening.
   timeout). With a longer PIR timeout the PIR output stays high and interferes
   with the ESP32's own timing of the prop, so it does not trigger when you
   expect it to.
+- An empty paper-towel tube over the PIR made it more directional. It worked
+  well, but needs a more permanent solution.
+- Power needs a better solution. We used two supplies: 12 V for the amplifier
+  and solenoid, and 9 V for the breadboard. This made a ground loop, and the
+  speakers hummed loudly. Removing the ground connection to the MOSFET board
+  stopped the hum.
+- Goal: one 12 V supply for everything. This probably needs a buck converter
+  for the board: its supply is rated 7–12 V, but it did not seem to work well
+  on 12 V.
 
 ### Tesla
 - Again admired and very effective, in spite of some timing issues: the trunk
@@ -155,6 +164,8 @@ A successful Halloween. All props ran through the evening.
 - [ ] Verify the Tesla timing fixes (trunk, lights and music end together).
 - [ ] Check the dungeon with the 60 s / 15 s settings; decide on the "halloween" sensor.
 - [ ] Coffin jumper: PIR timeout pot fully counter-clockwise before the event.
+- [ ] Coffin jumper: permanent PIR shroud to replace the paper-towel tube.
+- [ ] Coffin jumper: single 12 V supply for everything, with a buck converter for the board.
 
 ## Open items for 2026
 - [ ] Re-test Nest speaker discovery with speakers online.
