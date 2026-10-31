@@ -53,6 +53,7 @@ def make_group(defaults, scale=1.0):
     g.default_volumes = list(defaults)
     g.target_volumes = list(defaults)
     g.chromecasts = [FakeCast(f"10.0.0.{i}", d) for i, d in enumerate(defaults)]
+    g._last_urls = {}                              # set by __init__, which __new__ skips
     return g
 
 
