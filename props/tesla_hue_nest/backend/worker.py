@@ -18,6 +18,8 @@ from .hue_API import *
 from .tesla_API import *
 
 PROP_ID = "tesla_hue_nest"
+SPEAKER_LOST_S = 15   # a show ends if the speaker cannot be reached for this long
+SONG_END_CONFIRM_S = 4   # the song counts as finished once the speaker reports not playing this long
 
 
 # ============================ CONFIG MODEL ============================
@@ -38,6 +40,7 @@ class ConfigModel(BaseSettings):
     USE_TESLA: bool = False
     WAIT_BETWEEN_PLAYS: int = 480
     MOTION_TIMEOUT: int = 180
+    MAX_SHOW_DURATION: int = 0   # seconds; a show always ends after this (0 = no limit)
     HUE_SPOT_LIGHT: str | List[str] = "Halloween Tesla"  # exact Hue light name(s), case-insensitive
     HUE_PLAYING_SCENE: str = "purple"  # Options: 'disco' or color name ('red', 'yellow', 'pink', 'purple', 'normal', etc.)
     TELEMETRY_INTERVAL: int = 10  # How often to send telemetry updates (seconds)
@@ -211,24 +214,30 @@ class ArmingState(State):
         """
         Loads media onto the Chromecast group and transitions to WaitingState.
         """
-        # Load thriller sound track if possible
-        if context.cc_tesla_group.is_empty():
-            print('No Tesla chromecast found, cannot play media.')
-        else:
-            url_list = filter_url_list(context.config.CHROMECAST_TESLA_GROUP)
-            # Prefer background loader which guarantees paused-on-ready
-            if hasattr(context.cc_tesla_group, 'load_media_bg'):
-                try:
-                    task = context.cc_tesla_group.load_media_bg(url_list=url_list, autoplay=False)
-                    # wait synchronously in the sync-thread for readiness
-                    task.join()
-                    print('Tesla media loaded (background) and ready...')
-                except Exception as e:
-                    print(f'Background load failed: {e}; falling back to blocking load')
-                    context.cc_tesla_group.load_media(url_list=url_list)
+        # A speaker that cannot be reached must not leave the prop stuck here: go on to
+        # WaitingState, whose periodic speaker check re-arms once the speaker is back.
+        try:
+            # Load thriller sound track if possible
+            if context.cc_tesla_group.is_empty():
+                print('No Tesla chromecast found, cannot play media.')
             else:
-                context.cc_tesla_group.load_media(url_list=url_list)
-                print('Tesla media loaded and ready...')
+                url_list = filter_url_list(context.config.CHROMECAST_TESLA_GROUP)
+                # Prefer background loader which guarantees paused-on-ready
+                if hasattr(context.cc_tesla_group, 'load_media_bg'):
+                    try:
+                        task = context.cc_tesla_group.load_media_bg(url_list=url_list, autoplay=False)
+                        # wait synchronously in the sync-thread for readiness
+                        task.join()
+                        print('Tesla media loaded (background) and ready...')
+                    except Exception as e:
+                        print(f'Background load failed: {e}; falling back to blocking load')
+                        context.cc_tesla_group.load_media(url_list=url_list)
+                else:
+                    context.cc_tesla_group.load_media(url_list=url_list)
+                    print('Tesla media loaded and ready...')
+        except Exception as e:
+            print(f'Loading media failed: {e}')
+            context.telemetry("error", f"Loading media failed: {e}")
 
         if context.play_after_arm:
             context.play_after_arm = False
@@ -268,12 +277,18 @@ class WaitingState(State):
         """
         current_time = time.monotonic()
         if current_time - self.last_check_time > self.check_interval:
-            context.cc_tesla_group.refresh()
+            self.last_check_time = current_time   # at most one check per interval, also when it fails
+            try:
+                context.cc_tesla_group.refresh()
+            except Exception as e:
+                print(f"{self.__class__.__name__}::Speaker check failed ({e}). Rearming...")
+                context.telemetry("error", f"Speaker check failed: {e}")
+                context.set_state(ArmingState)
+                return
             if context.cc_tesla_group.any_unknown():
                 print(f"{self.__class__.__name__}::Unknown chromecast state detected. Rearming...")
                 context.set_state(ArmingState)
                 return
-            self.last_check_time = current_time
             print(f"{self.__class__.__name__}::Checked chromecast state, all good!")
 
     def on_action(self, context, action, arg):
@@ -350,6 +365,10 @@ class PlayingState(State):
         """
         self.timeout_interval = context.config.MOTION_TIMEOUT  # Timeout interval in seconds
         self.last_motion_time = time.monotonic()
+        self.music_started_at = time.monotonic()   # set again when play() is sent (see on_enter)
+        self.show_started_at = time.monotonic()    # for MAX_SHOW_DURATION
+        self.speaker_error_since = None            # when the speaker stopped answering, if it has
+        self.not_playing_since = None              # when the speaker first reported not playing
         # Remember where to return after the show and its cooldown
         if isinstance(context.current_state, StoppedState):
             context.after_play_state = StoppedState
@@ -391,6 +410,7 @@ class PlayingState(State):
                 context.cc_tesla_group.play()
             except Exception:
                 pass
+            self.music_started_at = time.monotonic()
 
         if context.blocked:
             print("Trunk blocked: show runs without opening the trunk.")
@@ -412,6 +432,14 @@ class PlayingState(State):
         if current_time < getattr(self, 'resume_grace_until', 0):
             return  # just resumed from pause; give the speakers time to report PLAYING
 
+        # Safety net: a show never runs longer than MAX_SHOW_DURATION, whatever the
+        # speaker or the motion sensors report
+        max_show = context.config.MAX_SHOW_DURATION
+        if max_show and current_time - self.show_started_at > max_show:
+            print(f"Show has run for {max_show} s (MAX_SHOW_DURATION), ending it.")
+            context.set_state(FadeOutState)
+            return
+
         if len(context.motion_sensors) > 0:
             if current_time - self.last_motion_time > self.timeout_interval:
                 # Trigger timeout if enough time has passed since the last motion detection
@@ -421,13 +449,37 @@ class PlayingState(State):
         
             print(f"{self.__class__.__name__}::Time since last motion: {current_time - self.last_motion_time:.1f} s")
         
-        if time.monotonic() - self.last_motion_time > 5:   # WAIT minimum 5 seconds before checking playing state
+        # End the show when the song has finished, whether or not people are still around.
+        # Not in the first 5 s after play() was sent: the speaker needs a moment to report PLAYING.
+        if current_time - self.music_started_at > 5:
             if not context.cc_tesla_group.is_empty():
-                context.cc_tesla_group.refresh()
-                if not context.cc_tesla_group.any_playing():
-                    print("Soundtrack stopped playing...")
-                    context.set_state(FadeOutState)
+                try:
+                    context.cc_tesla_group.refresh()
+                except Exception as e:
+                    # Lost connection: the speaker often keeps playing through a short blip,
+                    # so only end the show when it stays unreachable
+                    if self.speaker_error_since is None:
+                        self.speaker_error_since = current_time
+                        print(f"Speaker unreachable ({e}); ending the show if it lasts {SPEAKER_LOST_S} s")
+                        context.telemetry("error", f"Speaker unreachable: {e}")
+                    if current_time - self.speaker_error_since > SPEAKER_LOST_S:
+                        print(f"Speaker unreachable for {SPEAKER_LOST_S} s, ending the show.")
+                        context.set_state(FadeOutState)
                     return
+                if self.speaker_error_since is not None:
+                    print("Speaker reachable again.")
+                    self.speaker_error_since = None
+                # Right after a reconnect the speaker briefly reports no media session although
+                # it is still playing, so "not playing" must last a few seconds to count
+                if context.cc_tesla_group.any_playing():
+                    self.not_playing_since = None
+                else:
+                    if self.not_playing_since is None:
+                        self.not_playing_since = current_time
+                    if current_time - self.not_playing_since >= SONG_END_CONFIRM_S:
+                        print("Soundtrack stopped playing...")
+                        context.set_state(FadeOutState)
+                        return
 
     def on_action(self, context, action, arg):
         """Handles user commands during the playing sequence."""
@@ -502,6 +554,9 @@ class PausedState(State):
             return
         paused_for = time.monotonic() - self.paused_at
         self.resume_to.last_motion_time += paused_for   # the timeout did not run while paused
+        self.resume_to.show_started_at += paused_for    # nor did the show length
+        self.resume_to.speaker_error_since = None
+        self.resume_to.not_playing_since = None
         self.resume_to.resume_grace_until = time.monotonic() + 5
         if not context.cc_tesla_group.is_empty():
             try:
@@ -527,18 +582,23 @@ class FadeOutState(State):
         context.hue_manager.lights.disco_on = False
         context.hue_manager.lights.send_command('purple', transitiontime=self.transition_time * 10) # phue uses 1/10s
 
-        # A car that is asleep or offline must not keep the show from ending
+        # Music and lights first: closing the trunk can take a while (the car may need waking)
+        if context.cc_tesla_group is not None and not context.cc_tesla_group.is_empty():
+            try:
+                context.cc_tesla_group.fade_to_stop()
+            except Exception as e:
+                print(f"Fading out the music failed: {e}")
+
+        context.hue_manager.lights_off(transitiontime=self.transition_time * 10)  # 1/10 s
+
+        # Uses the cached trunk state (no paid check). A car that is asleep or offline
+        # must not keep the show from ending.
         if context.config.USE_TESLA and context.tesla_car is not None:
             try:
                 context.tesla_car.close_trunk(trunk_check=False)
             except Exception as e:
                 print(f"Close trunk failed: {e}")
                 context.telemetry("tesla/error", f"close_trunk failed: {e}")
-
-        if context.cc_tesla_group is not None and not context.cc_tesla_group.is_empty():
-            context.cc_tesla_group.fade_to_stop()
-
-        context.hue_manager.lights_off(transitiontime=self.transition_time * 10)  # 1/10 s
 
     def handle(self, context):
         """

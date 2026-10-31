@@ -426,12 +426,18 @@ class ChromecastGroup:
         return task
 
     def stop(self):
-        for cast in self.chromecasts: 
+        for cast in self.chromecasts:
             print("stop playing: "+cast.cast_info.host)
             try:
                 cast.media_controller.stop()
-            except pychromecast.RequestFailed as e:
-                print(f'Failed to stop media controller: {e}')
+                continue
+            except Exception as e:
+                # e.g. no media session right after a reconnect, although the speaker still plays
+                print(f'Failed to stop media controller: {e}; quitting the media app instead')
+            try:
+                cast.quit_app()   # stops whatever the speaker plays; the next arming loads the media again
+            except Exception as e:
+                print(f'Failed to quit the media app on {cast.cast_info.host}: {e}')
 
     def play(self):
         self.enforce_volume_limit()

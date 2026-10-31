@@ -49,7 +49,8 @@ class FakeCar:
 def test_pause_freezes_music_and_resume_continues_same_show(prop, group_attr):
     mod = importlib.import_module(f"props.{prop}.backend.worker")
     w = mod.Worker(prop, FakeMqtt(), None)
-    w.config = types.SimpleNamespace(WAIT_BETWEEN_PLAYS=0, MOTION_TIMEOUT=60, USE_TESLA=True)
+    w.config = types.SimpleNamespace(WAIT_BETWEEN_PLAYS=0, MOTION_TIMEOUT=60, USE_TESLA=True,
+                                     MAX_SHOW_DURATION=0)
     group, car = FakeGroup(), FakeCar()
     setattr(w, group_attr, group)
     w.tesla_car = car
@@ -87,7 +88,8 @@ def test_pause_freezes_music_and_resume_continues_same_show(prop, group_attr):
 def test_stop_from_pause_goes_to_stopped():
     mod = importlib.import_module("props.tesla_hue_nest.backend.worker")
     w = mod.Worker("tesla_hue_nest", FakeMqtt(), None)
-    w.config = types.SimpleNamespace(WAIT_BETWEEN_PLAYS=0, MOTION_TIMEOUT=60, USE_TESLA=True)
+    w.config = types.SimpleNamespace(WAIT_BETWEEN_PLAYS=0, MOTION_TIMEOUT=60, USE_TESLA=True,
+                                     MAX_SHOW_DURATION=0)
     w.cc_tesla_group = FakeGroup()
     w.current_state = mod.PlayingState(w)
     w.current_state.on_action(w, "pause", None)

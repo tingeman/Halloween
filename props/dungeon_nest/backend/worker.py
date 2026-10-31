@@ -164,6 +164,7 @@ class PlayingState(State):
         self.deadline = now + self.duration
         self.last_start = now
         self.last_check = now
+        self.ended_checks = 0   # consecutive checks that found the track ended
         self._entered = False
 
     def on_enter(self, context):
@@ -194,8 +195,12 @@ class PlayingState(State):
         if now - self.last_start > RESTART_GRACE_S and now - self.last_check >= TRACK_CHECK_S and context.have_speakers():
             self.last_check = now
             try:
-                if context.track_ended():
+                # Two readings in a row: right after a reconnect the speaker briefly reports
+                # no media although it is still playing
+                self.ended_checks = self.ended_checks + 1 if context.track_ended() else 0
+                if self.ended_checks >= 2:
                     print(f"[{PROP_ID}] Track ended before deadline, restarting.")
+                    self.ended_checks = 0
                     context.load_and_play()
                     self.last_start = time.monotonic()
             except Exception as e:

@@ -2,6 +2,7 @@
 
 # --- BEHAVIOR CONSTANTS ---
 MOTION_TIMEOUT: 120        # how long to keep playing when no motion is registered
+MAX_SHOW_DURATION: 128     # safety net: a show always ends after this (song 1:38 = 98 s, + 30 s)
 WAIT_BETWEEN_PLAYS: 30     # cooldown (seconds) after a show finishes, before the prop re-arms
 TELEMETRY_INTERVAL: 10     # how often to send telemetry updates (seconds)
 USE_TESLA: True
