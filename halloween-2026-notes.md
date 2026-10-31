@@ -121,6 +121,8 @@ A successful Halloween. All props ran through the evening.
   timeout). With a longer PIR timeout the PIR output stays high and interferes
   with the ESP32's own timing of the prop, so it does not trigger when you
   expect it to.
+- The Stanley FatMax compressor worked very well for the pneumatics and did not
+  have to run much.
 - An empty paper-towel tube over the PIR made it more directional. It worked
   well, but needs a more permanent solution.
 - Power needs a better solution. We used two supplies: 12 V for the amplifier
