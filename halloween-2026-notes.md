@@ -159,7 +159,13 @@ A successful Halloween. All props ran through the evening.
   not per-prop `hue_API.py`). Check them during the review.
 
 ## Open items for 2027
-- [ ] Complete, thorough code review, with focus on prop timing.
+- [ ] Complete, thorough code review, with focus on prop timing and on clashes
+  between props running at the same time (shared Hue bridge, sensors, lights,
+  speakers, the single worker process). Props were tested one at a time before
+  the event, never together, which is probably why the problems with the shared
+  Hue API only showed up live.
+- [ ] Before the event, test all props running together, with motion on the
+  shared sensors.
 - [ ] Fix dashboard elements that update slowly or not at all.
 - [ ] Verify the Tesla timing fixes (trunk, lights and music end together).
 - [ ] Check the dungeon with the 60 s / 15 s settings; decide on the "halloween" sensor.
