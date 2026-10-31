@@ -1,8 +1,8 @@
 # Configuration for the Dungeon Nest prop
 
 # --- BEHAVIOR ---
-PLAY_DURATION: 300        # seconds the soundscape loops after the last motion (retrigger resets this)
-WAIT_BETWEEN_PLAYS: 0     # cooldown seconds after a soundscape ends before re-arming (0 = re-arm at once)
+PLAY_DURATION: 60         # seconds the soundscape loops after the last motion (retrigger resets this)
+WAIT_BETWEEN_PLAYS: 15    # cooldown seconds after a soundscape ends before re-arming (0 = re-arm at once)
 AUTO_ARM: false           # true = start armed (reacting to motion); false = start stopped until armed
 SENSOR_POLL_INTERVAL: 1   # seconds between motion sensor polls
 TELEMETRY_INTERVAL: 10    # seconds between telemetry updates
