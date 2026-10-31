@@ -24,6 +24,18 @@ _bridges: dict[str, _Bridge] = {}
 _bridges_lock = threading.Lock()
 
 
+def _retry(fn, attempts=3, delay=1.5):
+    """Call fn, retrying on bridge errors such as request timeouts."""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt == attempts - 1:
+                raise
+            print(f"Hue request failed ({e}); retrying...")
+            time.sleep(delay)
+
+
 def get_bridge(bridge_ip):
     """Return the shared phue Bridge for this IP, creating it on first use."""
     with _bridges_lock:
@@ -101,8 +113,12 @@ class HueLights:
         self.run_disco = False
         self.bridge_ip = bridge_ip
         self.b = get_bridge(bridge_ip)
+        # Each light attribute is a bridge request; retry the whole lookup if one times out
+        _retry(lambda: self._find_lights(light_pattern), attempts=4, delay=2.0)
 
-        # get lights
+    def _find_lights(self, light_pattern):
+
+        # get lights (the bridge can time out while several props start at once)
         lights = self.b.get_light_objects('name')
 
         # Get the appropriate lights (only include reachable ones)

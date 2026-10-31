@@ -1014,14 +1014,14 @@ class Worker(BaseWorker):
 
         # If a new state requires entry initialization, run it now (sync thread)
         if getattr(self, '_state_needs_enter', False) and self.current_state is not None:
+            # Clear first: on_enter may call set_state itself, and that new state must get its own on_enter
+            self._state_needs_enter = False
             try:
                 self.current_state.on_enter(self)
                 self._collect_and_send_telemetry()
                 self.last_telemetry_time = time.monotonic()  # Reset timer after state transition
             except Exception as e:
                 self.telemetry("error", f"State on_enter error: {e}")
-            finally:
-                self._state_needs_enter = False
 
         # Delegate the main work to the current state's handle method
         if self.current_state:
@@ -1064,6 +1064,9 @@ class Worker(BaseWorker):
 
         This method must be executed in the sync thread.
         """
+        # Re-assert the retained state so a dropped/reordered publish cannot leave the UI stale
+        if self.current_state is not None:
+            self.publish_state(_state_name(self.current_state.__class__), retain=True)
         try:
             # Hue scene
             try:

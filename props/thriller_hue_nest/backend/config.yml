@@ -7,7 +7,7 @@ TELEMETRY_INTERVAL: 10     # how often to send telemetry updates (seconds)
 
 # --- HUE SETTINGS ---
 HUE_BRIDGE_IP: "10.67.1.54"   # Hue bridge IP
-HUE_SPOT_LIGHT: "Halloween Spot"
+HUE_SPOT_LIGHT: "Halloween Spot Greeter"
 HUE_PLAYING_SCENE: "disco"  # Options: 'disco' or color ('red', 'yellow', 'pink', 'purple', 'normal', 'normal_lstr', 'dimmed')
 MOTION_SENSORS:
   - "halloween"

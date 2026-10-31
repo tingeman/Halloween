@@ -42,7 +42,7 @@ except Exception:
         secrets = None
 
 # ---- Constants ----
-FW_VERSION = "1.4.0"   # 1.4.0: cooldown state, single "playing" state; 1.3.0: physical-only block and play counter
+FW_VERSION = "1.4.1"   # 1.4.1: re-check PIR when the cooldown ends; 1.4.0: cooldown state, single "playing" state; 1.3.0: physical-only block and play counter
 TELEMETRY_INTERVAL_MS = 5000
 MAX_RECONNECT_INTERVAL = 5 * 60 * 1000  # 5 minutes max backoff (given in ms)
 ACTION_FOLDER = 0
@@ -504,6 +504,12 @@ class CoffinProp:
             if self.state == "cooldown":
                 self.set_state(self._rest_state())
             self._telemetry()
+            # Motion edges during the cooldown were dropped; if the PIR is still high, someone is there now
+            try:
+                if self.is_armed and self.pir_latch and self.pir_latch.pin.value():
+                    self.request_trigger(now=now, source="pir")
+            except Exception as e:
+                print("Post-cooldown PIR check failed:", e)
         elif time.ticks_diff(now, self._last_cooldown_pub_ms) >= 1000:
             self._last_cooldown_pub_ms = now
             self._telemetry()

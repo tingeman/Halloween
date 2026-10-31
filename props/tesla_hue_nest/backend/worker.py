@@ -366,7 +366,7 @@ class PlayingState(State):
             try:
                 context.tesla_car.get_vehicle_state()
             except Exception as e:
-                self.telemetry("tesla/error", f"get_vehicle_state failed: {e}")
+                context.telemetry("tesla/error", f"get_vehicle_state failed: {e}")
 
         print("System is playing...")
         context.record_activation()
@@ -394,8 +394,9 @@ class PlayingState(State):
         elif context.config.USE_TESLA and context.tesla_car is not None:
             try:
                 context.tesla_car.open_trunk()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Open trunk failed: {e}")
+                context.telemetry("tesla/error", f"open_trunk failed: {e}")
 
     def handle(self, context):
         """
@@ -523,8 +524,13 @@ class FadeOutState(State):
         context.hue_manager.lights.disco_on = False
         context.hue_manager.lights.send_command('purple', transitiontime=self.transition_time * 10) # phue uses 1/10s
 
+        # A car that is asleep or offline must not keep the show from ending
         if context.config.USE_TESLA and context.tesla_car is not None:
-            context.tesla_car.close_trunk(trunk_check=True)
+            try:
+                context.tesla_car.close_trunk(trunk_check=True)
+            except Exception as e:
+                print(f"Close trunk failed: {e}")
+                context.telemetry("tesla/error", f"close_trunk failed: {e}")
 
         if context.cc_tesla_group is not None and not context.cc_tesla_group.is_empty():
             context.cc_tesla_group.fade_to_stop()
@@ -1068,14 +1074,14 @@ class Worker(BaseWorker):
 
         # If a new state requires entry initialization, run it now (sync thread)
         if getattr(self, '_state_needs_enter', False) and self.current_state is not None:
+            # Clear first: on_enter may call set_state itself, and that new state must get its own on_enter
+            self._state_needs_enter = False
             try:
                 self.current_state.on_enter(self)
                 self._collect_and_send_telemetry()
                 self.last_telemetry_time = time.monotonic()  # Reset timer after state transition
             except Exception as e:
                 self.telemetry("error", f"State on_enter error: {e}")
-            finally:
-                self._state_needs_enter = False
 
         # Delegate the main work to the current state's handle method
         if self.current_state:
@@ -1118,6 +1124,9 @@ class Worker(BaseWorker):
 
         This method must be executed in the sync thread.
         """
+        # Re-assert the retained state so a dropped/reordered publish cannot leave the UI stale
+        if self.current_state is not None:
+            self.publish_state(_state_name(self.current_state.__class__), retain=True)
         try:
             # Tesla trunk state
             try:

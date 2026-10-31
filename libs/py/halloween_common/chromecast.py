@@ -132,6 +132,8 @@ class ChromecastGroup:
             self.default_volumes = [0.3 for n in host_list]
         # Last volume asked for per speaker; the speaker plays min(target, cap)
         self.target_volumes = list(self.default_volumes)
+        # Last URL loaded per speaker host, so play() can reload it if the speaker lost its media
+        self._last_urls = {}
 
         for id, cast in enumerate(self.chromecasts):
             # Start socket client's worker thread and wait for initial status update
@@ -210,6 +212,7 @@ class ChromecastGroup:
         initial_player_state = cast.media_controller.status.player_state
 
         print("Loading media: " + cast.cast_info.host)
+        self._last_urls[cast.cast_info.host] = url
         cast.media_controller.play_media(url, "audio/mp3", autoplay=autoplay, enqueue=enqueue)
 
         if (not autoplay) and (initial_player_state != 'PLAYING'):
@@ -434,7 +437,18 @@ class ChromecastGroup:
         self.enforce_volume_limit()
         for cast in self.chromecasts:
             print("start playing: "+cast.cast_info.host)
-            cast.media_controller.play()
+            controller = cast.media_controller
+            try:
+                controller.update_status()
+            except Exception as e:
+                print(f'Status refresh failed for {cast.cast_info.host}: {e}')
+            url = self._last_urls.get(cast.cast_info.host)
+            if controller.status.player_state in ("IDLE", "UNKNOWN") and url:
+                # The preloaded media never became ready (or was dropped): load it and play at once
+                print(f"No media ready on {cast.cast_info.host}; reloading and playing")
+                controller.play_media(url, "audio/mp3", autoplay=True)
+            else:
+                controller.play()
 
     def pause(self):
         for cast in self.chromecasts: 

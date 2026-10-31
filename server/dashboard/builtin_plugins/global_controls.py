@@ -11,7 +11,7 @@ Global controls in the top bar of both dashboard views.
 """
 import json
 
-from dash import html, Input, Output, State, no_update
+from dash import dcc, html, Input, Output, State, no_update
 
 from halloween_common import volume_limit
 from plugin_base import BasePlugin, CommandUI
@@ -34,6 +34,7 @@ class Plugin(CommandUI, BasePlugin):
                     f"{PREFIX}-volume-limit", self._limit_payload, min=0, max=100, step=5, value=100,
                     label="", topic=self.T_LIMIT, retain=True)),
                 html.Span("off", id=f"{PREFIX}-volume-limit-label", className="hw-limit-label badge bg-secondary"),
+                dcc.Store(id=f"{PREFIX}-volume-limit-seen", storage_type="memory"),
             ]),
             self.button("All arm", f"{PREFIX}-all-arm", self._all_arm, "warning", confirm=True,
                                     title="Arm every prop (asks for a second click)"),
@@ -72,16 +73,22 @@ class Plugin(CommandUI, BasePlugin):
         self.register_controls(app)
         slider = f"{PREFIX}-volume-limit"
 
-        # The slider is published retained, so mirror what the broker has
+        # The slider is published retained, so mirror what the broker has. The slider is
+        # only moved when the broker value changes: resetting it on every tick would undo
+        # a drag that has not been echoed back yet (and re-publish the old value).
         @app.callback(
             Output(f"{PREFIX}-volume-limit-label", "children"),
             Output(f"{PREFIX}-volume-limit-label", "className"),
             Output(slider, "value"),
+            Output(f"{PREFIX}-volume-limit-seen", "data"),
             Input(self._tick, "n_intervals"),
             State(slider, "value"),
+            State(f"{PREFIX}-volume-limit-seen", "data"),
         )
-        def _render(_, current):
+        def _render(_, current, seen):
             scale = self.cache.get("global_volume_limit", volume_limit.NO_LIMIT)
             percent = round(scale * 100)
             cls = "hw-limit-label badge " + ("bg-secondary" if scale >= 1 else "bg-warning text-dark")
-            return volume_limit.label(scale), cls, (no_update if current == percent else percent)
+            if percent == seen:
+                return volume_limit.label(scale), cls, no_update, no_update
+            return volume_limit.label(scale), cls, (no_update if current == percent else percent), percent
