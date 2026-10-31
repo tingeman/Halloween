@@ -26,7 +26,7 @@ from halloween_common.media import resolve_media_url
 from worker_host.base import BaseWorker
 
 from .chromecast_API import ChromecastGroup
-from .hue_API import HueSensor
+from .hue_API import HueSensor, connect_sensors
 
 PROP_ID = "dungeon_nest"
 RESTART_GRACE_S = 15   # don't judge "track ended" until this long after (re)start
@@ -397,8 +397,11 @@ class Worker(BaseWorker):
     def _connect_sensors(self) -> None:
         try:
             self.telemetry("hue/state", f"Connecting to Hue motion sensors (bridge: {self.config.HUE_BRIDGE_IP})...")
-            self.sensors = [HueSensor(self.config.HUE_BRIDGE_IP, n) for n in self.config.MOTION_SENSORS]
-            self.telemetry("hue/state", f"Connected to {len(self.sensors)} Hue motion sensors.")
+            self.sensors, sensor_errors = connect_sensors(self.config.HUE_BRIDGE_IP, self.config.MOTION_SENSORS)
+            connected = f"Connected to {len(self.sensors)} Hue motion sensors."
+            if sensor_errors:
+                connected += f" Not found: {'; '.join(sensor_errors)}"
+            self.telemetry("hue/state", connected)
             self.telemetry("hue/SensorsCount", len(self.sensors), retain=True)
         except Exception as e:
             print(f"[{PROP_ID}] Hue sensor init failed: {e}")

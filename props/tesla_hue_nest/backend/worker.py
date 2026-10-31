@@ -38,7 +38,7 @@ class ConfigModel(BaseSettings):
     USE_TESLA: bool = False
     WAIT_BETWEEN_PLAYS: int = 480
     MOTION_TIMEOUT: int = 180
-    HUE_SPOT_LIGHT: str = "Halloween Tesla"
+    HUE_SPOT_LIGHT: str | List[str] = "Halloween Tesla"  # exact Hue light name(s), case-insensitive
     HUE_PLAYING_SCENE: str = "purple"  # Options: 'disco' or color name ('red', 'yellow', 'pink', 'purple', 'normal', etc.)
     TELEMETRY_INTERVAL: int = 10  # How often to send telemetry updates (seconds)
     tick_interval: int = 5
@@ -535,7 +535,7 @@ class FadeOutState(State):
         if context.cc_tesla_group is not None and not context.cc_tesla_group.is_empty():
             context.cc_tesla_group.fade_to_stop()
 
-        context.hue_manager.lights_off(transitiontime=self.transition_time)
+        context.hue_manager.lights_off(transitiontime=self.transition_time * 10)  # 1/10 s
 
     def handle(self, context):
         """
@@ -589,9 +589,14 @@ class HueManager:
         Turns the lights off.
 
         Args:
-            transitiontime: The time in seconds for the lights to fade out.
+            transitiontime: Fade time in 1/10 s (Hue units).
         """
         self.lights.lights_off(transitiontime=transitiontime)
+
+    def shutdown(self):
+        """Switch the lights off at once and wait until the bridge has the command."""
+        self.lights.send_command('off')
+        self.lights.flush()
 
 
 # ======= Resiliency helpers: dummy subsystems used when hardware is unavailable ======
@@ -614,6 +619,8 @@ class _NullHueManager:
     def send_command(self, *a, **k):
         return None
     def lights_off(self, *a, **k):
+        return None
+    def shutdown(self):
         return None
 
 
@@ -694,19 +701,20 @@ def filter_repeat_list(list_of_items):
     """Extract repeat flags from list of dicts or objects."""
     return [_get_field_from_item(it, 'repeat') for it in list_of_items]
 
-def connect_hue_lights(bridge_ip, light_name):
+def connect_hue_lights(bridge_ip, light_name, owner=None):
     """
     Connects to the Hue bridge and returns a HueLights object.
 
     Args:
         bridge_ip: The IP address of the Hue bridge.
-        light_name: The name of the light or group to control.
+        light_name: The exact name (or list of names) of the lights to control.
+        owner: The prop using the lights (named in warnings about shared lights).
 
     Returns:
         An initialized HueLights object.
     """
     print(f"connecting...")    
-    lights = HueLights(bridge_ip, light_name)
+    lights = HueLights(bridge_ip, light_name, owner=owner)
     print(f"sending command off...")
     lights.send_command('off')
     print(f"command off sent")
@@ -898,11 +906,16 @@ class Worker(BaseWorker):
         try:
             print('Connecting to Hue Lights...')
             self.telemetry("hue/state", f"Connecting to Hue lights... (bridge: {self.config.HUE_BRIDGE_IP})")
-            self.hue_lights = connect_hue_lights(self.config.HUE_BRIDGE_IP, self.config.HUE_SPOT_LIGHT)
+            if isinstance(self.hue_lights, HueLights):
+                self.hue_lights.stop_disco()   # a reconnect must not leave the old disco running
+            self.hue_lights = connect_hue_lights(self.config.HUE_BRIDGE_IP, self.config.HUE_SPOT_LIGHT, owner=PROP_ID)
             self.hue_manager = HueManager(self.hue_lights)
             print(f"Connected to Hue lights: {self.hue_lights}")
             print(f"Connected to Hue lights: {self.hue_lights.lights}")
-            self.telemetry("hue/state", f"Connected to Hue lights: {self.config.HUE_SPOT_LIGHT}")
+            connected = f"Connected to Hue lights: {', '.join(self.hue_lights.lights)}"
+            if self.hue_lights.missing:
+                connected += f" (not found: {', '.join(self.hue_lights.missing)})"
+            self.telemetry("hue/state", connected)
             self.telemetry("hue/LightsCount", len(self.hue_lights), retain=True)
         except Exception as e:
             print(f"[tesla_hue_nest] Hue lights init failed: {e}. Continuing without lights.")
@@ -919,8 +932,11 @@ class Worker(BaseWorker):
         try:
             print('Connecting to Hue Motion Sensors...')
             self.telemetry("hue/state", "Connecting to Hue motion sensors...")
-            self.motion_sensors = [HueSensor(self.config.HUE_BRIDGE_IP, name) for name in self.config.MOTION_SENSORS]
-            self.telemetry("hue/state", f"Connected to {len(self.motion_sensors)} Hue motion sensors.")
+            self.motion_sensors, sensor_errors = connect_sensors(self.config.HUE_BRIDGE_IP, self.config.MOTION_SENSORS)
+            connected = f"Connected to {len(self.motion_sensors)} Hue motion sensors."
+            if sensor_errors:
+                connected += f" Not found: {'; '.join(sensor_errors)}"
+            self.telemetry("hue/state", connected)
             self.telemetry("hue/SensorsCount", len(self.motion_sensors), retain=True)
         except Exception as e:
             print(f"[tesla_hue_nest] Hue motion sensor init failed: {e}. Continuing without motion sensors.")
@@ -1015,7 +1031,7 @@ class Worker(BaseWorker):
         """
         print("Cleaning up resources...")
         if hasattr(self, 'hue_manager'):
-            self.hue_manager.lights_off()
+            self.hue_manager.shutdown()
             self.telemetry("hue/state", "Off", retain=True)
         if hasattr(self, 'cc_tesla_group') and self.cc_tesla_group is not None:
             self.cc_tesla_group.stop()
