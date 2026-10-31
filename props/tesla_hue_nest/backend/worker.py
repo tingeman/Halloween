@@ -155,17 +155,24 @@ class StoppedState(State):
         further, preventing repeated "off" commands.
         """
         if not self.stopped:
+            # Set first: an error below must not make every tick repeat this (and keep waking the car)
+            self.stopped = True
             context.hue_manager.lights.disco_on = False
             context.hue_manager.lights.send_command('purple', transitiontime=1)
 
+            # Uses the cached trunk state: no request at all if the trunk is known to be closed.
+            # A car that is asleep or offline must not keep the speakers and lights from stopping.
             if context.config.USE_TESLA and context.tesla_car is not None:
-                context.tesla_car.close_trunk(trunk_check=True)
+                try:
+                    context.tesla_car.close_trunk(trunk_check=False)
+                except Exception as e:
+                    print(f"Close trunk failed: {e}")
+                    context.telemetry("tesla/error", f"close_trunk failed: {e}")
 
             if context.cc_tesla_group is not None and not context.cc_tesla_group.is_empty():
                 context.cc_tesla_group.stop()
 
             context.hue_manager.lights_off(transitiontime=1)
-            self.stopped = True
 
     def on_action(self, context, action, arg):
         """Handles user commands while in the stopped state."""
@@ -354,7 +361,7 @@ class PlayingState(State):
     def on_enter(self, context):
         """Perform blocking initialization (safe in sync thread):
 
-        - query Tesla vehicle state
+        - wake the car only when the trunk is opened (see open_trunk)
         - start media playback and open trunk as configured
         - send hue commands
         """
@@ -362,12 +369,8 @@ class PlayingState(State):
             return
         self._entered = True
 
-        if context.config.USE_TESLA and context.tesla_car is not None:
-            try:
-                context.tesla_car.get_vehicle_state()
-            except Exception as e:
-                context.telemetry("tesla/error", f"get_vehicle_state failed: {e}")
-
+        # No vehicle-state query here: it cost a billed data request per show and held back
+        # the lights and music while the car woke up. open_trunk() below wakes the car itself.
         print("System is playing...")
         context.record_activation()
         # Hue command (safe to call even if null manager)
@@ -527,7 +530,7 @@ class FadeOutState(State):
         # A car that is asleep or offline must not keep the show from ending
         if context.config.USE_TESLA and context.tesla_car is not None:
             try:
-                context.tesla_car.close_trunk(trunk_check=True)
+                context.tesla_car.close_trunk(trunk_check=False)
             except Exception as e:
                 print(f"Close trunk failed: {e}")
                 context.telemetry("tesla/error", f"close_trunk failed: {e}")
@@ -1037,8 +1040,12 @@ class Worker(BaseWorker):
             self.cc_tesla_group.stop()
             self.telemetry("speakers/State", "Stopped", retain=True)
         if hasattr(self, 'tesla_car') and self.config.USE_TESLA and self.tesla_car is not None:
-            self.tesla_car.close_trunk(trunk_check=True)
-            self.telemetry("tesla/Trunk", "Closed", retain=True)
+            try:
+                self.tesla_car.close_trunk(trunk_check=False)   # cached trunk state
+                self.telemetry("tesla/Trunk", "Closed", retain=True)
+            except Exception as e:
+                print(f"Close trunk failed: {e}")
+                self.telemetry("tesla/error", f"close_trunk failed: {e}")
 
     async def _poll_loop(self):
         """

@@ -130,6 +130,13 @@ class MyTeslaMateAPI:
     
 
 class TeslaCar:
+    # Right after a wake-up the car often reports 'online' while data requests and commands
+    # still get 'vehicle unavailable' for a few seconds. Every request sent through MyTeslaMate
+    # is paid for, so after a wake-up the call waits for these pauses (seconds) before each try:
+    # the first try usually succeeds, and there is at most one retry. No extra wake-ups are sent,
+    # and calls made while the car was already online are sent once, without waiting.
+    WAIT_AFTER_WAKE_S = (3, 5)
+
     def __init__(self, token, vehicle_id):
         self.trunk_open = False
         self.token = token
@@ -139,20 +146,43 @@ class TeslaCar:
         self.close_trunk(trunk_check=True)    # ensure trunk state is known and close trunk if open
         self.identify()
 
+    def _call_after_wake(self, fn, woke=True):
+        """Call fn() once; right after a wake-up, wait first and retry once on 'vehicle unavailable'."""
+        if not woke:
+            return fn()
+        last = len(self.WAIT_AFTER_WAKE_S) - 1
+        for attempt, delay in enumerate(self.WAIT_AFTER_WAKE_S):
+            time.sleep(delay)
+            try:
+                return fn()
+            except TeslaCarOfflineError as e:
+                if attempt == last:
+                    raise
+                print(f"{self.__class__.__name__}::Car not ready after wake-up ({e}); one more try in "
+                      f"{self.WAIT_AFTER_WAKE_S[attempt + 1]} s")
+
+    # Seconds between "is it online yet?" checks after a wake-up. Each check is a request
+    # through MyTeslaMate, so the car is not asked every second.
+    WAKE_POLL_INTERVAL_S = 3
+
     def wake_up(self, timeout=20):
+        """Wake the car if it is not online. Returns True if a wake-up was needed."""
         if not self.api.is_online():
             print(f"{self.__class__.__name__}::Vehicle is offline, attempting to wake up...")
-            # ipdb.set_trace()  # Debug breakpoint - commented out for production
-            res = self.api.wake_up()
-            time.sleep(1)
-            counter = 1
-            while not self.api.is_online():
-                if counter > timeout:
-                    raise TeslaCarOfflineError("Vehicle is still offline 20 sec after wake up")
-                print(f"{self.__class__.__name__}::Waiting for vehicle to come online... {counter}s")
-                time.sleep(1)
-                counter += 1
+            self.api.wake_up()
+            start = time.monotonic()
+            deadline = start + timeout
+            while True:
+                time.sleep(max(0.0, min(self.WAKE_POLL_INTERVAL_S, deadline - time.monotonic())))
+                if self.api.is_online():
+                    break
+                waited = time.monotonic() - start
+                if waited >= timeout:
+                    raise TeslaCarOfflineError(f"Vehicle is still offline {timeout} sec after wake up")
+                print(f"{self.__class__.__name__}::Waiting for vehicle to come online... {waited:.0f}s")
             print(f"{self.__class__.__name__}::Vehicle is now online")
+            return True
+        return False
 
     def identify(self):
         self.get_vehicle_state()
@@ -172,7 +202,8 @@ class TeslaCar:
             self.vehicle_data = self.api.vehicle_data()
         except TeslaCarOfflineError as e:
             self.wake_up()
-            self.vehicle_data = self.api.vehicle_data()
+            # The car was unavailable a moment ago, so allow the retries even if it already reports online
+            self.vehicle_data = self._call_after_wake(self.api.vehicle_data)
 
         # set online state  
         self.online = self.vehicle_data['state'] == 'online'
@@ -191,9 +222,9 @@ class TeslaCar:
 
     def open_trunk(self):
         if not self.trunk_open:
-            self.wake_up()
+            woke = self.wake_up()
             try:
-                res = self.api.actuate_trunk(which_trunk='rear')
+                res = self._call_after_wake(lambda: self.api.actuate_trunk(which_trunk='rear'), woke)
             except (TeslaAPIError, TeslaCarOfflineError) as e:
                 print(e)
                 return
@@ -217,8 +248,8 @@ class TeslaCar:
 
         This command will result in the doors being locked if they were not already locked and no doors were open.
         """
-        self.wake_up()
-        response = self.api.door_lock()
+        woke = self.wake_up()
+        response = self._call_after_wake(self.api.door_lock, woke)
         # The API reports the failure text in 'reason' (older responses used 'string')
         reason = response.get('reason') or response.get('string') or ''
         if response['result'] == False and 'CLOSURES_OPEN' in reason:
@@ -252,9 +283,9 @@ class TeslaCar:
             self.get_vehicle_state(trunk_check=True)
             
         if self.trunk_open:
-            self.wake_up()
+            woke = self.wake_up()
             try:
-                res = self.api.actuate_trunk(which_trunk='rear')
+                res = self._call_after_wake(lambda: self.api.actuate_trunk(which_trunk='rear'), woke)
             except (TeslaAPIError, TeslaCarOfflineError) as e:
                 print(e)
                 return
