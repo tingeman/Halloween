@@ -111,6 +111,51 @@ snapshot of the 2025 launch and is not updated here.
   `chromecast_API.py` test block of both props; no prop or config uses it.
   Planned use: dungeon soundscape (roadmap).
 
+## After the event (2026-10-31)
+
+A successful Halloween. All props ran through the evening.
+
+### Coffin jumper
+- Worked extremely well and gave the jump scare we wanted.
+- **Turn the PIR module's timeout pot fully counter-clockwise** (shortest
+  timeout). With a longer PIR timeout the PIR output stays high and interferes
+  with the ESP32's own timing of the prop, so it does not trigger when you
+  expect it to.
+
+### Tesla
+- Again admired and very effective, in spite of some timing issues: the trunk
+  stayed open after the music stopped, and once the music kept playing after
+  the trunk closed and the lights went off. Fixes made on the day may have
+  solved these (show ends on song end even with constant motion, lost speaker
+  handling, max show length, cached trunk state, fewer paid MyTeslaMate
+  requests). Verify next year.
+
+### Dungeon
+- Played almost continuously: shows only ended after `PLAY_DURATION` (then
+  300 s) without any motion on any of its 3 sensors, and the shared "halloween"
+  sensor saw people nearly all the time. Changed to `PLAY_DURATION: 60` and a
+  15 s cooldown (`WAIT_BETWEEN_PLAYS: 15`). Consider dropping the "halloween"
+  sensor from its `MOTION_SENSORS`.
+
+### JARVIS dashboard
+- Fun and also useful. Keep it.
+- Timing issues: some elements do not update properly, or are very slow to
+  update.
+
+### General
+- The code needs a complete and thorough review. There may still be issues with
+  prop timing.
+- Some findings above are out of date after the 2026-10-31 changes (for
+  example, Hue now goes through the shared `libs/py/halloween_common/hue.py`,
+  not per-prop `hue_API.py`). Check them during the review.
+
+## Open items for 2027
+- [ ] Complete, thorough code review, with focus on prop timing.
+- [ ] Fix dashboard elements that update slowly or not at all.
+- [ ] Verify the Tesla timing fixes (trunk, lights and music end together).
+- [ ] Check the dungeon with the 60 s / 15 s settings; decide on the "halloween" sensor.
+- [ ] Coffin jumper: PIR timeout pot fully counter-clockwise before the event.
+
 ## Open items for 2026
 - [ ] Re-test Nest speaker discovery with speakers online.
 - [ ] Test the dashboard Hue buttons.
