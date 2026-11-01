@@ -122,7 +122,7 @@ A successful Halloween. All props ran through the evening.
   with the ESP32's own timing of the prop, so it does not trigger when you
   expect it to.
 - The Stanley FatMax compressor worked very well for the pneumatics and did not
-  have to run much.
+  have to run much. Should be able to drive more props, if we make some.
 - An empty paper-towel tube over the PIR made it more directional. It worked
   well, but needs a more permanent solution.
 - Power needs a better solution. We used two supplies: 12 V for the amplifier
@@ -132,6 +132,8 @@ A successful Halloween. All props ran through the evening.
 - Goal: one 12 V supply for everything. This probably needs a buck converter
   for the board: its supply is rated 7–12 V, but it did not seem to work well
   on 12 V.
+- Add a scary laugh as the prop deaktivates and the skeleton settles back in
+  the coffin
 
 ### Tesla
 - Again admired and very effective, in spite of some timing issues: the trunk
@@ -147,6 +149,15 @@ A successful Halloween. All props ran through the evening.
   sensor saw people nearly all the time. Changed to `PLAY_DURATION: 60` and a
   15 s cooldown (`WAIT_BETWEEN_PLAYS: 15`). Consider dropping the "halloween"
   sensor from its `MOTION_SENSORS`.
+
+### Axworthy Flying Ghost
+- Didn't work well in 2025, was unrailing very often. (very windy conditions)
+- In 2026 it worked very well. We created a new lightweight ghost. It fell 
+  down only once during the entire evening.
+
+### Fog machine
+- Didn't manage to set up the fog-machine this year. 
+- Had bought 10 L of fog liquid - so we will have plenty for 2027 :-)
 
 ### JARVIS dashboard
 - Fun and also useful. Keep it.
@@ -174,6 +185,8 @@ A successful Halloween. All props ran through the evening.
 - [ ] Coffin jumper: PIR timeout pot fully counter-clockwise before the event.
 - [ ] Coffin jumper: permanent PIR shroud to replace the paper-towel tube.
 - [ ] Coffin jumper: single 12 V supply for everything, with a buck converter for the board.
+- [ ] Coffin jumper: Add a scary laugh as the prop deaktivates and the skeleton settles back 
+      in the coffin.
 
 ## Open items for 2026
 - [ ] Re-test Nest speaker discovery with speakers online.
